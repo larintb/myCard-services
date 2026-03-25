@@ -300,9 +300,9 @@ export default function Home() {
             <button
               onClick={() => scrollTo('how-it-works')}
               className="px-8 py-3.5 rounded-full text-sm font-medium transition-all cursor-pointer"
-              style={{ color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.55)', backgroundColor: 'rgba(255,255,255,0.08)' }}
-              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.16)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.8)'; }}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.55)'; }}
+              style={{ color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.3)' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.25)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
             >
               Ver cómo funciona
             </button>
