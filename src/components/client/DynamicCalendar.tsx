@@ -16,9 +16,10 @@ interface DynamicCalendarProps {
   businessId: string
   onTimeSlotSelected: (date: string, time: string) => void
   onBack: () => void
+  serviceDuration?: number
 }
 
-export function DynamicCalendar({ businessId, onTimeSlotSelected }: DynamicCalendarProps) {
+export function DynamicCalendar({ businessId, onTimeSlotSelected, serviceDuration = 30 }: DynamicCalendarProps) {
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
@@ -27,15 +28,9 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected }: DynamicCalen
   const generateDefaultTimeSlots = (): TimeSlot[] => {
     const slots: TimeSlot[] = []
     for (let hour = 9; hour <= 18; hour++) {
-      slots.push({
-        time: `${hour.toString().padStart(2, '0')}:00`,
-        available: true
-      })
+      slots.push({ time: `${hour.toString().padStart(2, '0')}:00`, available: true })
       if (hour < 18) {
-        slots.push({
-          time: `${hour.toString().padStart(2, '0')}:30`,
-          available: true
-        })
+        slots.push({ time: `${hour.toString().padStart(2, '0')}:30`, available: true })
       }
     }
     return slots
@@ -44,9 +39,8 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected }: DynamicCalen
   const loadAvailableSlots = useCallback(async (date: string) => {
     setLoadingSlots(true)
     try {
-      const response = await fetch(`/api/businesses/${businessId}/available-slots?date=${date}`)
+      const response = await fetch(`/api/businesses/${businessId}/available-slots?date=${date}&duration=${serviceDuration}`)
       const data = await response.json()
-
       if (data.success) {
         setAvailableSlots(data.slots.map((slot: AvailableSlotResponse) => ({
           time: slot.time,
@@ -60,12 +54,10 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected }: DynamicCalen
     } finally {
       setLoadingSlots(false)
     }
-  }, [businessId])
+  }, [businessId, serviceDuration])
 
   useEffect(() => {
-    if (selectedDate) {
-      loadAvailableSlots(selectedDate)
-    }
+    if (selectedDate) loadAvailableSlots(selectedDate)
   }, [selectedDate, loadAvailableSlots])
 
   const formatDate = (date: Date) => {
@@ -76,14 +68,9 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected }: DynamicCalen
   }
 
   const formatDisplayDate = (dateString: string) => {
-    // Parse the date string manually to avoid timezone issues
     const [year, month, day] = dateString.split('-').map(num => parseInt(num))
-    const date = new Date(year, month - 1, day) // month is 0-indexed
-    return date.toLocaleDateString('es-MX', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+    return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     })
   }
 
@@ -98,154 +85,159 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected }: DynamicCalen
     const month = date.getMonth()
     const firstDay = new Date(year, month, 1)
     const lastDay = new Date(year, month + 1, 0)
-    const daysInMonth = lastDay.getDate()
-    const startingDayOfWeek = firstDay.getDay()
-
     const days = []
-    
-    for (let i = 0; i < startingDayOfWeek; i++) {
-      days.push(null)
-    }
-    
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push(new Date(year, month, day))
-    }
-    
+    for (let i = 0; i < firstDay.getDay(); i++) days.push(null)
+    for (let d = 1; d <= lastDay.getDate(); d++) days.push(new Date(year, month, d))
     return days
   }
 
   const selectTimeSlot = (time: string) => {
-    if (selectedDate) {
-      onTimeSlotSelected(selectedDate, time)
-    }
+    if (selectedDate) onTimeSlotSelected(selectedDate, time)
   }
 
-  const prevMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))
-  }
+  const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))
+  const nextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))
 
-  const nextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))
-  }
+  const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+  const dayNames = ['D','L','M','X','J','V','S']
 
-  const monthNames = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ]
-
-  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+  const todayStr = formatDate(new Date())
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+    <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
       {/* Month navigation */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5">
         <button
           onClick={prevMonth}
-          className="w-10 h-10 hover:bg-gray-100 rounded-xl transition-all duration-200 active:scale-95 flex items-center justify-center"
+          className="w-9 h-9 rounded-full flex items-center justify-center transition-colors active:scale-95"
+          style={{ backgroundColor: '#F2F2F7' }}
         >
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+          <svg className="w-4 h-4" style={{ color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        
-        <h3 className="text-xl font-bold text-gray-900">
+
+        <h3 className="text-base font-semibold" style={{ color: '#1C1C1E' }}>
           {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
         </h3>
-        
+
         <button
           onClick={nextMonth}
-          className="w-10 h-10 hover:bg-gray-100 rounded-xl transition-all duration-200 active:scale-95 flex items-center justify-center"
+          className="w-9 h-9 rounded-full flex items-center justify-center transition-colors active:scale-95"
+          style={{ backgroundColor: '#F2F2F7' }}
         >
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+          <svg className="w-4 h-4" style={{ color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
           </svg>
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {dayNames.map((day) => (
-          <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+      {/* Day headers */}
+      <div className="grid grid-cols-7 mb-2">
+        {dayNames.map(day => (
+          <div key={day} className="text-center text-xs font-medium py-1" style={{ color: '#8E8E93' }}>
             {day}
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-2 mb-6">
-        {getDaysInMonth(currentMonth).map((date, index) => (
-          <button
-            key={index}
-            onClick={() => date && isDateAvailable(date) && setSelectedDate(formatDate(date))}
-            disabled={!date || !isDateAvailable(date)}
-            className={`
-              h-12 text-sm font-medium rounded-xl transition-all duration-200 transform active:scale-95
-              ${!date ? 'invisible' : ''}
-              ${date && !isDateAvailable(date) ? 'text-gray-400 cursor-not-allowed bg-gray-50' : ''}
-              ${date && isDateAvailable(date) && selectedDate !== formatDate(date) ? 'hover:bg-green-100 hover:text-green-800 hover:shadow-sm hover:-translate-y-0.5 bg-gray-50 text-gray-700 border-2 border-transparent hover:border-green-200' : ''}
-              ${selectedDate === formatDate(date || new Date()) ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md border-2 border-green-400' : ''}
-            `}
-          >
-            {date?.getDate()}
-          </button>
-        ))}
+      {/* Days grid */}
+      <div className="grid grid-cols-7 gap-1 mb-5">
+        {getDaysInMonth(currentMonth).map((date, index) => {
+          const dateStr = date ? formatDate(date) : ''
+          const isSelected = dateStr === selectedDate
+          const isToday = dateStr === todayStr
+          const available = date ? isDateAvailable(date) : false
+
+          return (
+            <button
+              key={index}
+              onClick={() => date && available && setSelectedDate(dateStr)}
+              disabled={!date || !available}
+              className="h-10 w-full flex items-center justify-center text-sm font-medium rounded-full transition-all active:scale-95"
+              style={{
+                visibility: date ? 'visible' : 'hidden',
+                backgroundColor: isSelected ? '#6366F1' : 'transparent',
+                color: isSelected ? '#FFFFFF' : available ? '#1C1C1E' : '#C7C7CC',
+                border: isToday && !isSelected ? '1.5px solid #6366F1' : 'none',
+                cursor: available ? 'pointer' : 'default',
+              }}
+            >
+              {date?.getDate()}
+            </button>
+          )
+        })}
       </div>
 
+      {/* Selected date display */}
       {selectedDate && (
-        <div className="mb-6 p-4 bg-gradient-to-r from-green-100 to-emerald-100 rounded-xl border border-green-200">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-green-800 font-bold text-lg">
-              {formatDisplayDate(selectedDate)}
-            </p>
-          </div>
+        <div
+          className="flex items-center p-3 rounded-xl mb-5"
+          style={{ backgroundColor: '#EEF2FF' }}
+        >
+          <svg className="w-4 h-4 mr-2 flex-shrink-0" style={{ color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-sm font-medium capitalize" style={{ color: '#6366F1' }}>
+            {formatDisplayDate(selectedDate)}
+          </p>
         </div>
       )}
 
+      {/* Time slots */}
       {selectedDate && (
         <div>
-          <h4 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-            <svg className="w-6 h-6 text-purple-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Horarios Disponibles
+          <h4 className="text-sm font-semibold mb-3" style={{ color: '#1C1C1E' }}>
+            Horarios disponibles
           </h4>
-          
+
           {loadingSlots ? (
-            <div className="text-center py-12">
-              <div className="inline-flex items-center bg-gray-50 px-6 py-4 rounded-xl">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-500 mr-3"></div>
-                <span className="text-gray-600 font-medium">Cargando horarios disponibles...</span>
-              </div>
+            <div className="flex items-center justify-center py-8">
+              <div className="w-5 h-5 rounded-full border-2 border-transparent animate-spin"
+                style={{ borderTopColor: '#6366F1', borderRightColor: '#6366F1' }} />
+              <span className="ml-2 text-sm" style={{ color: '#8E8E93' }}>Cargando...</span>
             </div>
           ) : availableSlots.length > 0 ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {availableSlots.map((slot) => (
+            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#E5E5EA transparent' }}>
+              {availableSlots.map(slot => (
                 <button
                   key={slot.time}
                   onClick={() => slot.available && selectTimeSlot(slot.time)}
                   disabled={!slot.available}
-                  className={`
-                    py-3 px-4 rounded-xl text-sm font-bold transition-all duration-200 transform active:scale-95
-                    ${slot.available 
-                      ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 hover:from-green-200 hover:to-emerald-200 hover:text-green-900 hover:shadow-md hover:-translate-y-0.5 border-2 border-green-200 hover:border-green-300' 
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed border-2 border-gray-200 opacity-60'
-                    }
-                  `}
+                  className="flex items-center justify-between w-full px-4 py-3.5 rounded-2xl text-sm font-medium transition-all active:scale-[0.98] flex-shrink-0"
+                  style={{
+                    backgroundColor: slot.available ? '#EEF2FF' : '#F2F2F7',
+                    color: slot.available ? '#6366F1' : '#C7C7CC',
+                    cursor: slot.available ? 'pointer' : 'default',
+                    border: `1.5px solid ${slot.available ? '#C7D2FE' : 'transparent'}`,
+                  }}
                 >
-                  {slot.time}
+                  <div className="flex items-center gap-3">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      style={{ color: slot.available ? '#6366F1' : '#C7C7CC' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-semibold">{slot.time}</span>
+                  </div>
+                  {slot.available ? (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: '#C7D2FE', color: '#4338CA' }}>
+                      Disponible
+                    </span>
+                  ) : (
+                    <span className="text-xs" style={{ color: '#C7C7CC' }}>Ocupado</span>
+                  )}
                 </button>
               ))}
             </div>
           ) : (
             <div className="text-center py-8">
-              <div className="text-gray-500">
-                <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="font-medium">No hay horarios disponibles</p>
-                <p className="text-sm">Intenta con otra fecha</p>
-              </div>
+              <svg className="w-10 h-10 mx-auto mb-2" style={{ color: '#C7C7CC' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm font-medium" style={{ color: '#8E8E93' }}>Sin horarios disponibles</p>
+              <p className="text-xs mt-1" style={{ color: '#C7C7CC' }}>Intenta con otra fecha</p>
             </div>
           )}
         </div>
@@ -253,13 +245,11 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected }: DynamicCalen
 
       {!selectedDate && (
         <div className="text-center py-8">
-          <div className="text-gray-500">
-            <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <p className="font-medium">Selecciona una fecha</p>
-            <p className="text-sm">Elige un día del calendario para ver los horarios disponibles</p>
-          </div>
+          <svg className="w-10 h-10 mx-auto mb-2" style={{ color: '#C7C7CC' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <p className="text-sm font-medium" style={{ color: '#8E8E93' }}>Selecciona una fecha</p>
+          <p className="text-xs mt-1" style={{ color: '#C7C7CC' }}>Elige un día para ver horarios</p>
         </div>
       )}
     </div>

@@ -1,11 +1,10 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 import { Business, Service, User } from '@/types'
 import { DynamicCalendar } from './DynamicCalendar'
-import { GoogleMap } from '../ui/GoogleMap'
-import { Button } from '../ui/Button'
+import { MapboxMap } from '../ui/MapboxMap'
 
 interface ClientAppointment {
   id: string
@@ -25,8 +24,6 @@ interface AppointmentSlot {
   date: string
   time: string
 }
-
-// CalendarSelection interface removed as it was unused
 
 interface BusinessHour {
   id: string
@@ -50,6 +47,22 @@ interface ClientAppointmentInterfaceProps {
 
 type ScreenType = 'home' | 'services' | 'calendar' | 'appointments' | 'business-info' | 'confirmation' | 'checkin'
 
+/* ── Design tokens ─────────────────────────────────────────────── */
+const C = {
+  bg: '#F2F2F7',
+  card: '#FFFFFF',
+  accent: '#6366F1',
+  accentHover: '#4F46E5',
+  accentLight: '#EEF2FF',
+  textPrimary: '#1C1C1E',
+  textSecondary: '#8E8E93',
+  separator: '#E5E5EA',
+  danger: '#FF3B30',
+  success: '#34C759',
+  warning: '#FF9500',
+  shadow: '0 2px 12px rgba(0,0,0,0.08)',
+} as const
+
 export function ClientAppointmentInterface({
   business,
   services,
@@ -60,7 +73,6 @@ export function ClientAppointmentInterface({
   const [appointments, setAppointments] = useState<ClientAppointment[]>([])
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlot | null>(null)
-  // calendarSelection state removed as it was unused
   const [businessHours, setBusinessHours] = useState<BusinessHour[]>([])
   const [loadingHours, setLoadingHours] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -69,28 +81,20 @@ export function ClientAppointmentInterface({
   const [checkinInput, setCheckinInput] = useState('')
   const [checkinLoading, setCheckinLoading] = useState(false)
 
-  // Helper function to get service data
-  const getServiceData = (appointment: ClientAppointment) => {
-    return appointment.service || null
-  }
+  const getServiceData = (appointment: ClientAppointment) => appointment.service || null
 
-  // Helper function to safely parse date strings avoiding timezone issues
   const parseDateString = (dateString: string) => {
     const [year, month, day] = dateString.split('-').map(num => parseInt(num))
-    return new Date(year, month - 1, day) // month is 0-indexed
+    return new Date(year, month - 1, day)
   }
 
   const loadUserAppointments = useCallback(async () => {
     try {
       const response = await fetch(`/api/businesses/${business.id}/client-appointments?client_id=${user.id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       })
       const data = await response.json()
-      if (data.success) {
-        setAppointments(data.appointments || [])
-      }
+      if (data.success) setAppointments(data.appointments || [])
     } catch (error) {
       console.error('Error loading appointments:', error)
     }
@@ -101,9 +105,7 @@ export function ClientAppointmentInterface({
     try {
       const response = await fetch(`/api/businesses/${business.id}/hours`)
       const data = await response.json()
-      if (data.success) {
-        setBusinessHours(data.hours || [])
-      }
+      if (data.success) setBusinessHours(data.hours || [])
     } catch (error) {
       console.error('Error loading business hours:', error)
     } finally {
@@ -118,7 +120,6 @@ export function ClientAppointmentInterface({
 
   const handleBookAppointment = async () => {
     if (!selectedService || !selectedSlot) return
-
     setLoading(true)
     try {
       const response = await fetch('/api/appointments', {
@@ -135,7 +136,6 @@ export function ClientAppointmentInterface({
           appointment_time: selectedSlot.time
         })
       })
-
       const data = await response.json()
       if (data.success) {
         setCurrentScreen('confirmation')
@@ -156,17 +156,11 @@ export function ClientAppointmentInterface({
     try {
       const response = await fetch(`/api/appointments/${appointment.id}/checkin`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       })
-
       const data = await response.json()
       if (data.success) {
-        setCheckinCode({
-          code: data.code,
-          expires_at: data.expires_at
-        })
+        setCheckinCode({ code: data.code, expires_at: data.expires_at })
         setSelectedAppointmentForCheckin(appointment)
         setCurrentScreen('checkin')
       } else {
@@ -182,7 +176,6 @@ export function ClientAppointmentInterface({
 
   const handleCheckin = async () => {
     if (!selectedAppointmentForCheckin || !checkinInput) return
-
     setCheckinLoading(true)
     try {
       const response = await fetch(`/api/appointments/${selectedAppointmentForCheckin.id}/checkin`, {
@@ -191,11 +184,8 @@ export function ClientAppointmentInterface({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          code: checkinInput
-        })
+        body: JSON.stringify({ code: checkinInput })
       })
-
       const data = await response.json()
       if (data.success) {
         alert('¡Check-in exitoso! Tu cita ha sido confirmada.')
@@ -220,284 +210,304 @@ export function ClientAppointmentInterface({
     return appointment.appointment_date === today
   }
 
-  const canGenerateCheckin = (appointment: ClientAppointment) => {
-    return appointment.status === 'confirmed' && isAppointmentToday(appointment)
-  }
+  const canGenerateCheckin = (appointment: ClientAppointment) =>
+    appointment.status === 'confirmed' && isAppointmentToday(appointment)
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN'
-    }).format(amount)
-  }
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount)
 
-  const formatTime = (time: string) => {
-    return new Date(`2000-01-01T${time}`).toLocaleTimeString('es-ES', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+  const formatTime = (time: string) =>
+    new Date(`2000-01-01T${time}`).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 
-  const getDayName = (dayOfWeek: number) => {
-    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
-    return days[dayOfWeek]
-  }
+  const getDayName = (dayOfWeek: number) =>
+    ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][dayOfWeek]
 
-  const getCurrentDayOfWeek = () => {
-    return new Date().getDay()
-  }
+  const isToday = (dayOfWeek: number) => dayOfWeek === new Date().getDay()
 
-  const isToday = (dayOfWeek: number) => {
-    return dayOfWeek === getCurrentDayOfWeek()
-  }
+  /* ── Shared sub-components ─────────────────────────────────────── */
 
-  const renderNavigation = () => (
-    <div className="bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 shadow-lg sticky top-0 z-50">
-      {/* Gradient overlay for smoother effect */}
-      <div className="absolute inset-0 bg-black/10"></div>
-      
-      <div className="relative px-4 py-4 safe-area-top">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            {/* Business logo or fallback avatar */}
-            <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center ring-2 ring-white/30 shadow-lg overflow-hidden">
-              {business.business_image_url ? (
-                <Image
-                  src={business.business_image_url}
-                  alt={`Logo de ${business.business_name}`}
-                  width={40}
-                  height={40}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8v-3a1 1 0 011-1h2a1 1 0 011 1v3" />
-                </svg>
-              )}
-            </div>
-            <div className="text-white">
-              <h1 className="font-bold text-lg leading-tight">{business.business_name}</h1>
-              <p className="text-xs text-white/80">¡Hola, {user.first_name}!</p>
-            </div>
-          </div>
-
-          {/* Back to home button - only show if not on home */}
-          {currentScreen !== 'home' && (
-            <button
-              onClick={() => setCurrentScreen('home')}
-              className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white font-medium px-4 py-2 rounded-full text-sm transition-all duration-200 flex items-center space-x-2 active:scale-95"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-              <span>Inicio</span>
-            </button>
-          )}
-        </div>
-      </div>
+  const BusinessLogo = ({ size = 48 }: { size?: number }) => (
+    <div
+      className="rounded-full overflow-hidden flex items-center justify-center flex-shrink-0"
+      style={{ width: size, height: size, backgroundColor: C.accent }}
+    >
+      {business.business_image_url ? (
+        <Image
+          src={business.business_image_url}
+          alt={`Logo de ${business.business_name}`}
+          width={size}
+          height={size}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <svg
+          style={{ width: size * 0.45, height: size * 0.45, color: '#FFFFFF' }}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+          />
+        </svg>
+      )}
     </div>
   )
 
+  const BackButton = ({ onPress }: { onPress: () => void }) => (
+    <button
+      onClick={onPress}
+      className="w-9 h-9 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+      style={{ backgroundColor: C.bg }}
+    >
+      <svg className="w-4 h-4" style={{ color: C.textPrimary }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+      </svg>
+    </button>
+  )
+
+  const PrimaryButton = ({
+    children, onClick, disabled, className = ''
+  }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; className?: string }) => (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`py-3.5 rounded-[14px] font-semibold text-sm text-white transition-opacity active:opacity-80 ${className}`}
+      style={{ backgroundColor: disabled ? '#A5B4FC' : C.accent }}
+    >
+      {children}
+    </button>
+  )
+
+  const statusBadge = (status: ClientAppointment['status']) => {
+    const map = {
+      pending:   { bg: '#FFF7ED', color: '#C2410C', label: 'Pendiente' },
+      confirmed: { bg: C.accentLight, color: C.accent, label: 'Confirmada' },
+      completed: { bg: '#F0FDF4', color: '#15803D', label: 'Completada' },
+      cancelled: { bg: '#FEF2F2', color: '#DC2626', label: 'Cancelada' },
+    }
+    const s = map[status]
+    return (
+      <span
+        className="px-3 py-1 rounded-full text-xs font-semibold"
+        style={{ backgroundColor: s.bg, color: s.color }}
+      >
+        {s.label}
+      </span>
+    )
+  }
+
+  /* ── Bottom Nav ───────────────────────────────────────────────── */
+  const showBottomNav = ['home', 'services', 'appointments'].includes(currentScreen)
+
+  const NavTab = ({
+    screen, label, icon
+  }: { screen: ScreenType; label: string; icon: React.ReactNode }) => {
+    const active = currentScreen === screen
+    return (
+      <button
+        onClick={() => setCurrentScreen(screen)}
+        className="flex flex-col items-center flex-1 pt-2 pb-1 transition-colors"
+        style={{ color: active ? C.accent : C.textSecondary }}
+      >
+        {icon}
+        <span className="text-[10px] font-medium mt-0.5">{label}</span>
+      </button>
+    )
+  }
+
+  const BottomNav = () => (
+    <div
+      className="fixed bottom-0 left-0 right-0 flex border-t"
+      style={{ backgroundColor: C.card, borderColor: C.separator, height: 64 }}
+    >
+      <NavTab screen="home" label="Inicio" icon={
+        <svg className="w-5 h-5" fill={currentScreen === 'home' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={currentScreen === 'home' ? 0 : 2}
+            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      } />
+      <NavTab screen="services" label="Servicios" icon={
+        <svg className="w-5 h-5" fill={currentScreen === 'services' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={currentScreen === 'services' ? 0 : 2}
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      } />
+      <NavTab screen="appointments" label="Mis citas" icon={
+        <svg className="w-5 h-5" fill={currentScreen === 'appointments' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={currentScreen === 'appointments' ? 0 : 2}
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      } />
+    </div>
+  )
+
+  /* ── Screens ──────────────────────────────────────────────────── */
+
   const renderHome = () => (
-    <div className="px-4 pb-6 bg-gradient-to-br from-gray-50 to-white min-h-screen">
-      {/* Welcome section with improved mobile design */}
-      <div className="pt-6 pb-8 text-center">
-        <div className="mb-6">
-          <div className="w-20 h-20 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full mx-auto flex items-center justify-center shadow-lg mb-4 overflow-hidden">
-            {business.business_image_url ? (
-              <Image
-                src={business.business_image_url}
-                alt={`Logo de ${business.business_name}`}
-                width={80}
-                height={80}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            )}
-          </div>
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          ¡Bienvenido!
-        </h2>
-        <p className="text-gray-600 text-lg mb-2">
-          {business.business_name}
-        </p>
-        <div className="inline-flex items-center bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Cliente Registrado
+    <div className="screen-enter px-4 pt-6 pb-6 space-y-4">
+      {/* Business card */}
+      <div
+        className="bg-white rounded-2xl p-5 flex items-center gap-4"
+        style={{ boxShadow: C.shadow }}
+      >
+        <BusinessLogo size={56} />
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-bold truncate" style={{ color: C.textPrimary }}>
+            {business.business_name}
+          </h2>
+          {business.address && (
+            <p className="text-xs mt-0.5 truncate" style={{ color: C.textSecondary }}>
+              {business.address}
+            </p>
+          )}
+          <span
+            className="inline-block mt-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+            style={{ backgroundColor: C.accentLight, color: C.accent }}
+          >
+            Hola, {user.first_name}
+          </span>
         </div>
       </div>
 
-      {/* Action cards optimized for mobile */}
-      <div className="space-y-4">
-        {/* Primary action - Book appointment */}
-        <button
-          onClick={() => setCurrentScreen('services')}
-          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-2xl p-6 shadow-lg active:scale-[0.98] transition-all duration-200 text-left"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <div className="flex items-center mb-3">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mr-4">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-bold text-xl text-white">Agendar Cita</h3>
-                  <p className="text-white/80 text-sm">Ver servicios disponibles</p>
-                </div>
-              </div>
-            </div>
-            <svg className="w-6 h-6 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+      {/* Primary action */}
+      <button
+        onClick={() => setCurrentScreen('services')}
+        className="w-full rounded-2xl p-5 text-white flex items-center justify-between active:opacity-90 transition-opacity"
+        style={{ backgroundColor: C.accent, boxShadow: C.shadow }}
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
+          <div className="text-left">
+            <p className="font-bold text-base">Agendar cita</p>
+            <p className="text-sm text-white/70">Ver servicios disponibles</p>
+          </div>
+        </div>
+        <svg className="w-5 h-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      {/* Secondary cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => setCurrentScreen('appointments')}
+          className="bg-white rounded-2xl p-4 text-left active:opacity-80 transition-opacity"
+          style={{ boxShadow: C.shadow }}
+        >
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+            style={{ backgroundColor: C.accentLight }}>
+            <svg className="w-5 h-5" style={{ color: C.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>Mis citas</p>
+          <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
+            {appointments.length === 0 ? 'Sin citas' : `${appointments.length} programada${appointments.length !== 1 ? 's' : ''}`}
+          </p>
         </button>
 
-        {/* Secondary actions grid */}
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setCurrentScreen('appointments')}
-            className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 hover:shadow-lg active:scale-[0.98] transition-all duration-200 text-left"
-          >
-            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <h3 className="font-bold text-gray-900 mb-1 text-base">Mis Citas</h3>
-            <p className="text-gray-600 text-sm">
-              {appointments.length === 0 ? 'Sin citas' : `${appointments.length} cita${appointments.length !== 1 ? 's' : ''}`}
-            </p>
-          </button>
-
-          <button
-            onClick={() => setCurrentScreen('business-info')}
-            className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 hover:shadow-lg active:scale-[0.98] transition-all duration-200 text-left"
-          >
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="font-bold text-gray-900 mb-1 text-base">Info</h3>
-            <p className="text-gray-600 text-sm">Detalles del negocio</p>
-          </button>
-        </div>
-
-        {/* Next appointment card */}
-        {appointments.length > 0 && (
-          <div className="bg-gradient-to-r from-purple-500 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center mb-3">
-                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mr-4">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-white">Próxima Cita</h3>
-                    <p className="text-white/80 text-sm">
-                      {getServiceData(appointments[0])?.name || 'Servicio programado'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <button
+          onClick={() => setCurrentScreen('business-info')}
+          className="bg-white rounded-2xl p-4 text-left active:opacity-80 transition-opacity"
+          style={{ boxShadow: C.shadow }}
+        >
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+            style={{ backgroundColor: '#F0F9FF' }}>
+            <svg className="w-5 h-5" style={{ color: '#0EA5E9' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </div>
-        )}
+          <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>Info</p>
+          <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>Detalles del negocio</p>
+        </button>
       </div>
+
+      {/* Next appointment banner */}
+      {appointments.filter(a => a.status === 'confirmed' || a.status === 'pending').length > 0 && (
+        <div
+          className="bg-white rounded-2xl p-4"
+          style={{ boxShadow: C.shadow, borderLeft: `4px solid ${C.accent}` }}
+        >
+          <p className="text-xs font-semibold mb-1" style={{ color: C.accent }}>PRÓXIMA CITA</p>
+          {(() => {
+            const next = appointments.find(a => a.status === 'confirmed' || a.status === 'pending')!
+            return (
+              <div>
+                <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>
+                  {getServiceData(next)?.name || 'Servicio'}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
+                  {parseDateString(next.appointment_date).toLocaleDateString('es-MX', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  {' · '}{formatTime(next.appointment_time)}
+                </p>
+              </div>
+            )
+          })()}
+        </div>
+      )}
     </div>
   )
 
   const renderServices = () => (
-    <div className="px-4 pb-6 bg-gradient-to-br from-gray-50 to-white min-h-screen">
-      {/* Header with back navigation */}
-      <div className="pt-6 pb-6">
-        <div className="flex items-center mb-4">
-          <button
-            onClick={() => setCurrentScreen('home')}
-            className="mr-4 w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors duration-200 active:scale-95"
+    <div className="screen-enter px-4 pt-6 pb-6">
+      <h2 className="text-xl font-bold mb-1" style={{ color: C.textPrimary }}>Servicios</h2>
+      <p className="text-sm mb-5" style={{ color: C.textSecondary }}>Elige un servicio para agendar</p>
+
+      <div className="space-y-3">
+        {services.map(service => (
+          <div
+            key={service.id}
+            className="bg-white rounded-2xl p-5"
+            style={{ boxShadow: C.shadow }}
           >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Servicios</h2>
-            <p className="text-gray-600">Selecciona un servicio para agendar</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Services list optimized for mobile */}
-      <div className="space-y-4">
-        {services.map((service) => (
-          <div key={service.id} className="bg-white rounded-2xl p-6 shadow-md border border-gray-100 hover:shadow-lg transition-all duration-200">
-            <div className="mb-4">
-              {/* Service header */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="font-bold text-xl text-gray-900 mb-2">{service.name}</h3>
-                  {service.description && (
-                    <p className="text-gray-600 text-base leading-relaxed mb-3">{service.description}</p>
-                  )}
-                </div>
-                <div className="ml-4 text-right">
-                  <div className="text-2xl font-bold text-green-600 mb-1">
-                    {formatCurrency(service.price)}
-                  </div>
-                </div>
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1">
+                <h3 className="font-bold text-base" style={{ color: C.textPrimary }}>{service.name}</h3>
+                {service.description && (
+                  <p className="text-sm mt-1 leading-relaxed" style={{ color: C.textSecondary }}>{service.description}</p>
+                )}
               </div>
-
-              {/* Service details */}
-              <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-medium">{service.duration_minutes} minutos</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
-                  <span className="text-green-600 font-medium">Disponible</span>
-                </div>
-              </div>
+              <p className="font-bold text-base ml-4" style={{ color: C.accent }}>
+                {formatCurrency(service.price)}
+              </p>
             </div>
 
-            {/* Action button */}
-            <button
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-1.5" style={{ color: C.textSecondary }}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-xs font-medium">{service.duration_minutes} min</span>
+              </div>
+              <span className="text-xs font-medium" style={{ color: C.success }}>Disponible</span>
+            </div>
+
+            <PrimaryButton
+              className="w-full"
               onClick={() => {
                 setSelectedService(service)
                 setCurrentScreen('calendar')
               }}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center justify-center space-x-2"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-lg">Agendar Cita</span>
-            </button>
+              Agendar cita
+            </PrimaryButton>
           </div>
         ))}
 
-        {/* Empty state */}
         {services.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Sin servicios disponibles</h3>
-            <p className="text-gray-600">Este negocio aún no ha configurado sus servicios.</p>
+          <div className="text-center py-16">
+            <svg className="w-12 h-12 mx-auto mb-3" style={{ color: C.separator }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            <p className="font-semibold" style={{ color: C.textSecondary }}>Sin servicios disponibles</p>
           </div>
         )}
       </div>
@@ -505,111 +515,72 @@ export function ClientAppointmentInterface({
   )
 
   const renderCalendar = () => (
-    <div className="px-4 pb-6 bg-gradient-to-br from-gray-50 to-white min-h-screen">
-      {/* Header with back navigation */}
-      <div className="pt-6 pb-6">
-        <div className="flex items-center mb-4">
-          <button
-            onClick={() => setCurrentScreen('services')}
-            className="mr-4 w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors duration-200 active:scale-95"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {selectedService?.name}
-            </h2>
-            <p className="text-gray-600">Selecciona fecha y hora para tu cita</p>
-          </div>
+    <div className="screen-enter px-4 pt-6 pb-6">
+      <div className="flex items-center gap-3 mb-5">
+        <BackButton onPress={() => setCurrentScreen('services')} />
+        <div>
+          <h2 className="text-xl font-bold" style={{ color: C.textPrimary }}>Elige fecha y hora</h2>
+          <p className="text-xs" style={{ color: C.textSecondary }}>Para tu cita</p>
         </div>
-
-        {/* Service info card */}
-        {selectedService && (
-          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-4 text-white mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-lg">{selectedService.name}</h3>
-                <p className="text-white/80 text-sm">{selectedService.duration_minutes} minutos</p>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold">{formatCurrency(selectedService.price)}</div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Service pill */}
+      {selectedService && (
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium mb-4"
+          style={{ backgroundColor: C.accentLight, color: C.accent }}
+        >
+          <span>{selectedService.name}</span>
+          <span style={{ color: C.accentHover }}>·</span>
+          <span>{formatCurrency(selectedService.price)}</span>
+          <span style={{ color: C.accentHover }}>·</span>
+          <span>{selectedService.duration_minutes} min</span>
+        </div>
+      )}
 
       {selectedService && (
         <DynamicCalendar
           businessId={business.id}
-          onTimeSlotSelected={(date: string, time: string) => {
-            setSelectedSlot({ date, time })
-          }}
+          serviceDuration={selectedService.duration_minutes}
+          onTimeSlotSelected={(date: string, time: string) => setSelectedSlot({ date, time })}
           onBack={() => setCurrentScreen('services')}
         />
       )}
-      
+
+      {/* Confirm panel */}
       {selectedSlot && selectedService && (
-        <div className="mt-6 bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-          <h3 className="font-bold text-xl text-gray-900 mb-6">Confirmar Reserva</h3>
-          
-          <div className="space-y-4 mb-6">
-            <div className="flex items-center p-3 bg-gray-50 rounded-xl">
-              <svg className="w-5 h-5 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <div>
-                <span className="text-gray-600 text-sm">Servicio</span>
-                <div className="font-bold text-gray-900">{selectedService.name}</div>
+        <div className="mt-4 bg-white rounded-2xl p-5" style={{ boxShadow: C.shadow }}>
+          <h3 className="font-bold text-base mb-4" style={{ color: C.textPrimary }}>Confirmar reserva</h3>
+
+          <div className="space-y-2 mb-5">
+            {[
+              { icon: '🗂', label: 'Servicio', value: selectedService.name },
+              { icon: '📅', label: 'Fecha', value: parseDateString(selectedSlot.date).toLocaleDateString('es-MX', { weekday: 'long', month: 'long', day: 'numeric' }) },
+              { icon: '🕐', label: 'Hora', value: `${formatTime(selectedSlot.time)} (${selectedService.duration_minutes} min)` },
+              { icon: '💰', label: 'Precio', value: formatCurrency(selectedService.price) },
+            ].map(row => (
+              <div key={row.label} className="flex items-center justify-between py-2.5 px-3 rounded-xl"
+                style={{ backgroundColor: C.bg }}>
+                <span className="text-sm" style={{ color: C.textSecondary }}>{row.label}</span>
+                <span className="text-sm font-semibold" style={{ color: C.textPrimary }}>{row.value}</span>
               </div>
-            </div>
-            
-            <div className="flex items-center p-3 bg-gray-50 rounded-xl">
-              <svg className="w-5 h-5 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <div>
-                <span className="text-gray-600 text-sm">Fecha</span>
-                <div className="font-bold text-gray-900">{parseDateString(selectedSlot.date).toLocaleDateString('es-MX')}</div>
-              </div>
-            </div>
-            
-            <div className="flex items-center p-3 bg-gray-50 rounded-xl">
-              <svg className="w-5 h-5 text-purple-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <span className="text-gray-600 text-sm">Hora</span>
-                <div className="font-bold text-gray-900">{formatTime(selectedSlot.time)} ({selectedService.duration_minutes} min)</div>
-              </div>
-            </div>
-            
-            <div className="flex items-center p-3 bg-green-50 rounded-xl border border-green-200">
-              <svg className="w-5 h-5 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-              </svg>
-              <div>
-                <span className="text-gray-600 text-sm">Precio</span>
-                <div className="font-bold text-green-700 text-lg">{formatCurrency(selectedService.price)}</div>
-              </div>
-            </div>
+            ))}
           </div>
-          
-          <div className="flex space-x-3">
-            <button
+
+          <div className="flex gap-3">
+            <PrimaryButton
+              className="flex-1"
               onClick={handleBookAppointment}
               disabled={loading}
-              className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 active:scale-[0.98] text-lg"
             >
-              {loading ? 'Confirmando...' : 'Confirmar Cita'}
-            </button>
+              {loading ? 'Confirmando...' : 'Confirmar cita'}
+            </PrimaryButton>
             <button
               onClick={() => setSelectedSlot(null)}
-              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-4 px-6 rounded-xl transition-all duration-200 active:scale-[0.98] text-lg"
+              className="flex-1 py-3.5 rounded-[14px] text-sm font-semibold transition-colors"
+              style={{ backgroundColor: C.bg, color: C.textSecondary }}
             >
-              Cambiar Horario
+              Cambiar hora
             </button>
           </div>
         </div>
@@ -618,293 +589,210 @@ export function ClientAppointmentInterface({
   )
 
   const renderAppointments = () => (
-    <div className="px-4 pb-6 bg-gradient-to-br from-gray-50 to-white min-h-screen">
-      {/* Header with back navigation */}
-      <div className="pt-6 pb-6">
-        <div className="flex items-center mb-4">
-          <button
-            onClick={() => setCurrentScreen('home')}
-            className="mr-4 w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors duration-200 active:scale-95"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Mis Citas</h2>
-            <p className="text-gray-600">Gestiona tus citas programadas</p>
-          </div>
-        </div>
-      </div>
+    <div className="screen-enter px-4 pt-6 pb-6">
+      <h2 className="text-xl font-bold mb-1" style={{ color: C.textPrimary }}>Mis citas</h2>
+      <p className="text-sm mb-5" style={{ color: C.textSecondary }}>Gestiona tus reservas</p>
 
       {appointments.length === 0 ? (
-        <div className="text-center py-16 px-4">
-          <div className="w-20 h-20 bg-gradient-to-r from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
+            style={{ backgroundColor: C.accentLight }}>
+            <svg className="w-8 h-8" style={{ color: C.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-3">Sin citas programadas</h3>
-          <p className="text-gray-600 mb-8 text-lg leading-relaxed">¡Agenda tu primera cita y descubre nuestros servicios!</p>
-          <button 
-            onClick={() => setCurrentScreen('services')}
-            className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-200 active:scale-[0.98] text-lg"
-          >
-            Ver Servicios
-          </button>
+          <p className="font-bold text-base mb-1" style={{ color: C.textPrimary }}>Sin citas programadas</p>
+          <p className="text-sm mb-6" style={{ color: C.textSecondary }}>¡Agenda tu primera cita!</p>
+          <PrimaryButton className="px-8" onClick={() => setCurrentScreen('services')}>
+            Ver servicios
+          </PrimaryButton>
         </div>
       ) : (
-        <div className="space-y-4">
-          {appointments.map((appointment) => (
-            <div key={appointment.id} className="bg-white rounded-2xl p-6 shadow-md border border-gray-100 hover:shadow-lg transition-all duration-200">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h3 className="font-bold text-xl text-gray-900 mb-2">
-                    {getServiceData(appointment)?.name || 'Servicio no disponible'}
-                  </h3>
-                  <div className="flex items-center text-gray-600 text-base mb-3">
-                    <svg className="w-5 h-5 mr-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-medium">
-                      {parseDateString(appointment.appointment_date).toLocaleDateString('es-MX', { 
-                        weekday: 'long', 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex items-center text-gray-600 text-base mb-4">
-                    <svg className="w-5 h-5 mr-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="font-medium">
-                      {formatTime(appointment.appointment_time)} ({getServiceData(appointment)?.duration_minutes || 0} min)
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right ml-4">
-                  <div className={`inline-flex px-4 py-2 rounded-full text-sm font-bold mb-3 ${
-                    appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                    appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                    appointment.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {appointment.status === 'confirmed' ? 'Confirmada' :
-                     appointment.status === 'pending' ? 'Pendiente' :
-                     appointment.status === 'completed' ? 'Completada' : 'Cancelada'}
-                  </div>
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(getServiceData(appointment)?.price || 0)}
-                  </div>
-                </div>
+        <div className="space-y-3">
+          {appointments.map(appointment => (
+            <div key={appointment.id} className="bg-white rounded-2xl p-5" style={{ boxShadow: C.shadow }}>
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="font-bold text-base flex-1 mr-3" style={{ color: C.textPrimary }}>
+                  {getServiceData(appointment)?.name || 'Servicio'}
+                </h3>
+                {statusBadge(appointment.status)}
               </div>
 
-              {/* Action buttons */}
-              {appointment.status === 'pending' && (
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                  <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-xl transition-all duration-200 active:scale-[0.98]">
-                    Gestionar Cita
-                  </button>
+              <div className="space-y-1.5 mb-3">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 flex-shrink-0" style={{ color: C.textSecondary }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-sm font-medium capitalize" style={{ color: C.textPrimary }}>
+                    {parseDateString(appointment.appointment_date).toLocaleDateString('es-MX', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 flex-shrink-0" style={{ color: C.textSecondary }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm font-medium" style={{ color: C.textPrimary }}>
+                    {formatTime(appointment.appointment_time)} · {getServiceData(appointment)?.duration_minutes || 0} min
+                  </span>
+                </div>
+                <p className="text-sm font-bold" style={{ color: C.accent }}>
+                  {formatCurrency(getServiceData(appointment)?.price || 0)}
+                </p>
+              </div>
 
-              {/* Check-in button for confirmed appointments on the same day */}
+              {/* Check-in button */}
               {canGenerateCheckin(appointment) && (
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                  <button
+                <div className="pt-3 border-t" style={{ borderColor: C.separator }}>
+                  <PrimaryButton
+                    className="w-full"
                     onClick={() => handleGenerateCheckinCode(appointment)}
                     disabled={checkinLoading}
-                    className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center justify-center space-x-2"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>{checkinLoading ? 'Generando...' : 'Hacer Check-in'}</span>
-                  </button>
+                    {checkinLoading ? 'Generando...' : 'Hacer Check-in'}
+                  </PrimaryButton>
                 </div>
               )}
 
-              {/* Show when checkin is available but not today */}
+              {/* Check-in not available today */}
               {appointment.status === 'confirmed' && !isAppointmentToday(appointment) && (
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                  <div className="w-full bg-blue-50 text-blue-800 text-center py-3 px-4 rounded-xl border border-blue-200">
-                    <div className="flex items-center justify-center space-x-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-sm font-medium">Check-in disponible el día de la cita</span>
-                    </div>
-                  </div>
+                <div className="mt-3 pt-3 border-t" style={{ borderColor: C.separator }}>
+                  <p className="text-xs text-center" style={{ color: C.textSecondary }}>
+                    Check-in disponible el día de la cita
+                  </p>
                 </div>
               )}
             </div>
           ))}
 
-          {/* Add new appointment button */}
-          <div className="mt-8">
-            <button 
-              onClick={() => setCurrentScreen('services')}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center justify-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              <span className="text-lg">Agendar Nueva Cita</span>
-            </button>
-          </div>
+          <PrimaryButton className="w-full mt-2" onClick={() => setCurrentScreen('services')}>
+            + Agendar nueva cita
+          </PrimaryButton>
         </div>
       )}
     </div>
   )
 
   const renderBusinessInfo = () => (
-    <div className="max-w-4xl mx-auto p-4">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Información del Negocio</h2>
-        <p className="text-gray-600">Detalles de contacto y ubicación</p>
+    <div className="screen-enter px-4 pt-6 pb-6">
+      <div className="flex items-center gap-3 mb-5">
+        <BackButton onPress={() => setCurrentScreen('home')} />
+        <h2 className="text-xl font-bold" style={{ color: C.textPrimary }}>Información</h2>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Business Details */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-            <h3 className="font-semibold text-gray-900 mb-4">Detalles de Contacto</h3>
-            
+      <div className="space-y-3">
+        {/* Header */}
+        <div className="bg-white rounded-2xl p-5 flex items-center gap-4" style={{ boxShadow: C.shadow }}>
+          <BusinessLogo size={52} />
+          <div>
+            <h3 className="font-bold text-base" style={{ color: C.textPrimary }}>{business.business_name}</h3>
             {business.phone && (
-              <div className="flex items-center mb-3">
-                <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-                <span className="text-gray-700">{business.phone}</span>
-              </div>
-            )}
-
-            {business.address && (
-              <div className="flex items-start mb-3">
-                <svg className="w-5 h-5 text-gray-400 mr-3 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span className="text-gray-700">{business.address}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Business Hours */}
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-            <h3 className="font-semibold text-gray-900 mb-4">Horarios de Atención</h3>
-            {loadingHours ? (
-              <div className="text-gray-500">Cargando horarios...</div>
-            ) : businessHours.length > 0 ? (
-              <div className="space-y-1">
-                {businessHours.map((hour) => {
-                  const isTodayHour = isToday(hour.day_of_week)
-                  return (
-                    <div
-                      key={hour.id}
-                      className={`flex items-center justify-between py-3 px-4 rounded-lg transition-colors ${
-                        isTodayHour
-                          ? 'bg-green-50 border border-green-200'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      {/* Left side: Day name + Today badge */}
-                      <div className="flex items-center space-x-3">
-                        <span
-                          className={`text-sm w-24 ${
-                            isTodayHour
-                              ? 'text-green-800 font-bold'
-                              : 'text-gray-700 font-medium'
-                          }`}
-                          style={{ textAlign: 'left' }}
-                        >
-                          {getDayName(hour.day_of_week)}
-                        </span>
-                        {isTodayHour && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-600 text-white">
-                            Hoy
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Right side: Hours */}
-                      <div className="text-right">
-                        <span className={`text-sm ${
-                          isTodayHour
-                            ? 'text-green-700 font-bold'
-                            : 'text-gray-600 font-medium'
-                        }`}>
-                          {hour.is_active
-                            ? `${formatTime(hour.open_time)} - ${formatTime(hour.close_time)}`
-                            : 'Cerrado'
-                          }
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="text-gray-500">No hay horarios configurados</div>
+              <p className="text-sm mt-0.5" style={{ color: C.textSecondary }}>{business.phone}</p>
             )}
           </div>
         </div>
+
+        {/* Contact */}
+        {business.address && (
+          <div className="bg-white rounded-2xl p-5" style={{ boxShadow: C.shadow }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: C.textSecondary }}>DIRECCIÓN</p>
+            <div className="flex items-start gap-2">
+              <svg className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: C.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <p className="text-sm" style={{ color: C.textPrimary }}>{business.address}</p>
+            </div>
+          </div>
+        )}
 
         {/* Map */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-6 pb-0">
-            <h3 className="font-semibold text-gray-900 mb-4">Ubicación</h3>
+        {business.address && (
+          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: C.shadow }}>
+            <MapboxMap
+              key={`${business.address}-${business.business_name}`}
+              address={business.address}
+              businessName={business.business_name}
+              className="h-56 w-full"
+            />
           </div>
-          <div className="h-80">
-            {business.address ? (
-              <GoogleMap
-                key={`${business.address}-${business.business_name}`} // Force re-render when address or business name changes
-                address={business.address}
-                businessName={business.business_name}
-                className="h-full w-full"
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-500">
-                <div className="text-center">
-                  <svg className="w-12 h-12 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  </svg>
-                  <p>Ubicación no disponible</p>
-                </div>
-              </div>
-            )}
-          </div>
+        )}
+
+        {/* Business hours */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: C.shadow }}>
+          <p className="text-xs font-semibold mb-3" style={{ color: C.textSecondary }}>HORARIOS</p>
+          {loadingHours ? (
+            <p className="text-sm" style={{ color: C.textSecondary }}>Cargando...</p>
+          ) : businessHours.length > 0 ? (
+            <div className="space-y-1">
+              {businessHours.map(hour => {
+                const todayRow = isToday(hour.day_of_week)
+                return (
+                  <div
+                    key={hour.id}
+                    className="flex items-center justify-between py-2.5 px-3 rounded-xl"
+                    style={{ backgroundColor: todayRow ? C.accentLight : 'transparent' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium w-24" style={{ color: todayRow ? C.accent : C.textPrimary }}>
+                        {getDayName(hour.day_of_week)}
+                      </span>
+                      {todayRow && (
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: C.accent }}>
+                          Hoy
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: todayRow ? C.accent : C.textSecondary }}>
+                      {hour.is_active ? `${formatTime(hour.open_time)} – ${formatTime(hour.close_time)}` : 'Cerrado'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: C.textSecondary }}>Sin horarios configurados</p>
+          )}
         </div>
+
+        <PrimaryButton className="w-full" onClick={() => setCurrentScreen('services')}>
+          Agendar cita
+        </PrimaryButton>
       </div>
     </div>
   )
 
   const renderConfirmation = () => (
-    <div className="max-w-2xl mx-auto p-4">
-      <div className="text-center py-12">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+    <div className="screen-enter flex flex-col items-center justify-center min-h-[60vh] px-4 pt-6 pb-6">
+      <div className="bg-white rounded-2xl p-8 w-full max-w-sm text-center" style={{ boxShadow: C.shadow }}>
+        <div
+          className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center"
+          style={{ backgroundColor: '#F0FDF4' }}
+        >
+          <svg className="w-8 h-8" style={{ color: C.success }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Cita Agendada!</h2>
-        <p className="text-gray-600 mb-6">
-          Tu cita ha sido programada exitosamente. Recibirás una confirmación pronto.
+
+        <h2 className="text-2xl font-bold mb-2" style={{ color: C.textPrimary }}>¡Cita agendada!</h2>
+        <p className="text-sm mb-8 leading-relaxed" style={{ color: C.textSecondary }}>
+          Tu cita fue programada exitosamente. Recibirás una confirmación pronto.
         </p>
-        <div className="space-y-3">
-          <Button
-            onClick={() => setCurrentScreen('appointments')}
-            className="w-full"
-          >
-            Ver Mis Citas
-          </Button>
+
+        <div className="space-y-2.5">
+          <PrimaryButton className="w-full" onClick={() => setCurrentScreen('appointments')}>
+            Ver mis citas
+          </PrimaryButton>
           <button
             onClick={() => setCurrentScreen('home')}
-            className="w-full text-green-600 hover:text-green-700 font-medium"
+            className="w-full py-3.5 text-sm font-semibold rounded-[14px] transition-colors"
+            style={{ color: C.accent }}
           >
-            Volver al Inicio
+            Volver al inicio
           </button>
         </div>
       </div>
@@ -912,150 +800,99 @@ export function ClientAppointmentInterface({
   )
 
   const renderCheckin = () => (
-    <div className="px-4 pb-6 bg-gradient-to-br from-gray-50 to-white min-h-screen">
-      {/* Header with back navigation */}
-      <div className="pt-6 pb-6">
-        <div className="flex items-center mb-4">
-          <button
-            onClick={() => setCurrentScreen('appointments')}
-            className="mr-4 w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors duration-200 active:scale-95"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Check-in</h2>
-            <p className="text-gray-600">Confirma tu llegada al establecimiento</p>
-          </div>
+    <div className="screen-enter px-4 pt-6 pb-6">
+      <div className="flex items-center gap-3 mb-5">
+        <BackButton onPress={() => setCurrentScreen('appointments')} />
+        <div>
+          <h2 className="text-xl font-bold" style={{ color: C.textPrimary }}>Check-in</h2>
+          <p className="text-xs" style={{ color: C.textSecondary }}>Confirma tu llegada</p>
         </div>
       </div>
 
-      {/* Appointment info */}
+      {/* Appointment info pill */}
       {selectedAppointmentForCheckin && (
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <h3 className="font-bold text-xl mb-2">
-                {getServiceData(selectedAppointmentForCheckin)?.name || 'Servicio'}
-              </h3>
-              <div className="space-y-1 text-blue-100">
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span>{parseDateString(selectedAppointmentForCheckin.appointment_date).toLocaleDateString('es-MX')}</span>
-                </div>
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>{formatTime(selectedAppointmentForCheckin.appointment_time)}</span>
-                </div>
-              </div>
-            </div>
+        <div className="bg-white rounded-2xl p-4 mb-4" style={{ boxShadow: C.shadow, borderLeft: `4px solid ${C.accent}` }}>
+          <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>
+            {getServiceData(selectedAppointmentForCheckin)?.name || 'Servicio'}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
+            {parseDateString(selectedAppointmentForCheckin.appointment_date).toLocaleDateString('es-MX', { weekday: 'long', month: 'long', day: 'numeric' })}
+            {' · '}{formatTime(selectedAppointmentForCheckin.appointment_time)}
+          </p>
+        </div>
+      )}
+
+      {/* Show generated code */}
+      {checkinCode && (
+        <div className="bg-white rounded-2xl p-5 mb-4" style={{ boxShadow: C.shadow }}>
+          <p className="text-xs font-semibold mb-3" style={{ color: C.textSecondary }}>TU CÓDIGO</p>
+          <div
+            className="text-center py-6 rounded-xl mb-3"
+            style={{ backgroundColor: C.bg }}
+          >
+            <p
+              className="text-4xl font-bold tracking-[0.3em]"
+              style={{ color: C.textPrimary, fontFamily: 'var(--font-poppins), monospace' }}
+            >
+              {checkinCode.code}
+            </p>
+            <p className="text-xs mt-2" style={{ color: C.textSecondary }}>
+              Expira: {new Date(checkinCode.expires_at).toLocaleTimeString('es-ES')}
+            </p>
+          </div>
+          <div className="rounded-xl p-3" style={{ backgroundColor: C.accentLight }}>
+            <p className="text-xs font-medium" style={{ color: C.accent }}>
+              Muestra este código al personal del establecimiento
+            </p>
           </div>
         </div>
       )}
 
-      {/* Check-in options */}
-      <div className="space-y-6">
-        {/* Generate code section */}
-        {checkinCode && (
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-            <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-              <svg className="w-6 h-6 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Tu Código de Check-in
-            </h3>
-
-            <div className="text-center bg-gray-50 rounded-xl p-8 mb-6">
-              <div className="text-4xl font-bold text-gray-900 tracking-widest mb-2">
-                {checkinCode.code}
-              </div>
-              <p className="text-sm text-gray-600">
-                Muestra este código al personal del establecimiento
-              </p>
-              <p className="text-xs text-gray-500 mt-2">
-                Expira: {new Date(checkinCode.expires_at).toLocaleTimeString('es-ES')}
-              </p>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <div className="flex items-start">
-                <svg className="w-5 h-5 text-blue-600 mr-3 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="text-blue-800 text-sm">
-                  <p className="font-medium mb-1">¿Cómo hacer check-in?</p>
-                  <ul className="text-xs space-y-1">
-                    <li>• Muestra este código al personal</li>
-                    <li>• O ingresa el código manualmente abajo</li>
-                    <li>• El código expira en 30 minutos</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Manual check-in section */}
-        <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-          <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-            <svg className="w-6 h-6 text-purple-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-            Confirmar Check-in
-          </h3>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Código de Check-in
-              </label>
-              <input
-                type="text"
-                value={checkinInput}
-                onChange={(e) => setCheckinInput(e.target.value)}
-                placeholder="Ingresa tu código de 6 dígitos"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-lg font-mono tracking-widest"
-                maxLength={6}
-              />
-            </div>
-
-            <button
-              onClick={handleCheckin}
-              disabled={checkinLoading || checkinInput.length !== 6}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 active:scale-[0.98] text-lg"
-            >
-              {checkinLoading ? 'Procesando...' : 'Confirmar Check-in'}
-            </button>
-          </div>
-        </div>
+      {/* Manual input */}
+      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: C.shadow }}>
+        <p className="text-sm font-semibold mb-3" style={{ color: C.textPrimary }}>Ingresar código</p>
+        <input
+          type="text"
+          value={checkinInput}
+          onChange={e => setCheckinInput(e.target.value.toUpperCase())}
+          placeholder="000000"
+          maxLength={6}
+          className="w-full text-center text-3xl font-bold tracking-[0.4em] py-4 rounded-xl outline-none mb-4"
+          style={{
+            border: `1.5px solid ${C.separator}`,
+            color: C.textPrimary,
+            backgroundColor: C.bg,
+            fontFamily: 'var(--font-poppins), monospace',
+          }}
+          onFocus={e => { e.target.style.borderColor = C.accent }}
+          onBlur={e => { e.target.style.borderColor = C.separator }}
+        />
+        <PrimaryButton
+          className="w-full"
+          onClick={handleCheckin}
+          disabled={checkinLoading || checkinInput.length !== 6}
+        >
+          {checkinLoading ? 'Procesando...' : 'Verificar código'}
+        </PrimaryButton>
       </div>
     </div>
   )
 
+  /* ── Main render ─────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 transition-all duration-300">
-      {renderNavigation()}
-      
-      {/* Screen content with smooth transitions */}
-      <div className="transition-all duration-300 ease-in-out">
-        <div className="opacity-100 transform translate-y-0 transition-all duration-300">
-          {currentScreen === 'home' && renderHome()}
-          {currentScreen === 'services' && renderServices()}
-          {currentScreen === 'calendar' && renderCalendar()}
-          {currentScreen === 'appointments' && renderAppointments()}
-          {currentScreen === 'business-info' && renderBusinessInfo()}
-          {currentScreen === 'confirmation' && renderConfirmation()}
-          {currentScreen === 'checkin' && renderCheckin()}
-        </div>
+    <div className="min-h-screen font-poppins" style={{ backgroundColor: C.bg }}>
+      {/* Content with bottom nav padding */}
+      <div style={{ paddingBottom: showBottomNav ? 80 : 24 }}>
+        {currentScreen === 'home'          && renderHome()}
+        {currentScreen === 'services'      && renderServices()}
+        {currentScreen === 'calendar'      && renderCalendar()}
+        {currentScreen === 'appointments'  && renderAppointments()}
+        {currentScreen === 'business-info' && renderBusinessInfo()}
+        {currentScreen === 'confirmation'  && renderConfirmation()}
+        {currentScreen === 'checkin'       && renderCheckin()}
       </div>
 
-      {/* Mobile-optimized safe area bottom spacing */}
-      <div className="h-8 md:h-4"></div>
+      {showBottomNav && <BottomNav />}
     </div>
   )
 }
