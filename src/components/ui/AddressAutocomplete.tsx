@@ -1,52 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
-// Google Maps types
-interface GoogleMapsPlace {
-  formatted_address?: string
-  address_components?: Array<{
-    long_name: string
-    short_name: string
-    types: string[]
-  }>
-  geometry?: {
-    location: {
-      lat: () => number
-      lng: () => number
-    }
-  }
-  place_id?: string
-}
-
-interface GoogleMapsAutocomplete {
-  addListener: (event: string, callback: () => void) => void
-  getPlace: () => GoogleMapsPlace
-}
-
-interface GoogleMapsAutocompleteOptions {
-  types?: string[]
-  componentRestrictions?: {
-    country?: string | string[]
-  }
-}
-
-interface WindowWithGoogleMaps extends Window {
-  google?: {
-    maps?: {
-      places?: {
-        Autocomplete: new (input: HTMLInputElement, options?: GoogleMapsAutocompleteOptions) => GoogleMapsAutocomplete
-      }
-      event?: {
-        clearInstanceListeners: (instance: GoogleMapsAutocomplete) => void
-      }
-    }
-  }
-  googleMapsLoading?: Promise<void>
-}
-
-
-interface AddressDetails {
+export interface AddressDetails {
   fullAddress: string
   streetNumber?: string
   route?: string
@@ -59,6 +15,18 @@ interface AddressDetails {
   longitude?: number
 }
 
+interface MapboxFeature {
+  id: string
+  place_name: string
+  center: [number, number]   // [lng, lat]
+  text: string               // street name
+  address?: string           // house number
+  context?: Array<{
+    id: string
+    text: string
+  }>
+}
+
 interface AddressAutocompleteProps {
   onAddressSelect: (address: AddressDetails) => void
   placeholder?: string
@@ -67,192 +35,163 @@ interface AddressAutocompleteProps {
   disabled?: boolean
 }
 
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
+
+function parseMapboxFeature(feature: MapboxFeature): AddressDetails {
+  const details: AddressDetails = {
+    fullAddress: feature.place_name,
+    placeId: feature.id,
+    longitude: feature.center[0],
+    latitude: feature.center[1],
+    route: feature.text,
+    streetNumber: feature.address
+  }
+
+  if (feature.context) {
+    for (const ctx of feature.context) {
+      const type = ctx.id.split('.')[0]
+      switch (type) {
+        case 'place':
+        case 'locality':
+          details.city = ctx.text
+          break
+        case 'region':
+          details.state = ctx.text
+          break
+        case 'country':
+          details.country = ctx.text
+          break
+        case 'postcode':
+          details.postalCode = ctx.text
+          break
+      }
+    }
+  }
+
+  return details
+}
+
 export function AddressAutocomplete({
   onAddressSelect,
-  placeholder = "Ingresa la dirección...",
-  className = "",
-  initialValue = "",
+  placeholder = 'Ingresa la dirección...',
+  className = '',
+  initialValue = '',
   disabled = false
 }: AddressAutocompleteProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [value, setValue] = useState(initialValue)
+  const [suggestions, setSuggestions] = useState<MapboxFeature[]>([])
+  const [isOpen, setIsOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const autocompleteRef = useRef<GoogleMapsAutocomplete | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Global script loading state
-  const loadGoogleMaps = async () => {
-    const windowWithMaps = window as WindowWithGoogleMaps
-    if (windowWithMaps.google?.maps?.places) {
-      return Promise.resolve()
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (!MAPBOX_TOKEN) {
+      setError('Token de Mapbox no configurado')
+      return
     }
 
-    // Check if script is already being loaded
-    const windowWithLoading = window as WindowWithGoogleMaps
-    if (windowWithLoading.googleMapsLoading) {
-      return windowWithLoading.googleMapsLoading
+    setIsLoading(true)
+    try {
+      const encoded = encodeURIComponent(query)
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&types=address&limit=5&language=es`
+      const res = await fetch(url)
+      const data = await res.json()
+      setSuggestions(data.features ?? [])
+      setIsOpen(true)
+      setError(null)
+    } catch {
+      setError('Error al cargar sugerencias')
+      setSuggestions([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value
+    setValue(query)
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    if (query.trim().length < 3) {
+      setSuggestions([])
+      setIsOpen(false)
+      return
     }
 
-    // Check if script is already in the page
-    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]')
-    if (existingScript) {
-      return new Promise<void>((resolve) => {
-        const checkGoogleMaps = () => {
-          const windowWithMaps = window as WindowWithGoogleMaps
-          if (windowWithMaps.google?.maps?.places) {
-            resolve()
-          } else {
-            setTimeout(checkGoogleMaps, 100)
-          }
-        }
-        checkGoogleMaps()
-      })
-    }
-
-    // Create and store the loading promise
-    const loadingPromise = new Promise<void>((resolve, reject) => {
-      const script = document.createElement('script')
-      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-
-      if (!apiKey) {
-        reject(new Error('Google Maps API key not found'))
-        return
-      }
-
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`
-      script.async = true
-      script.onload = () => {
-        const windowWithLoading = window as WindowWithGoogleMaps
-        delete windowWithLoading.googleMapsLoading
-        resolve()
-      }
-      script.onerror = () => {
-        const windowWithLoading = window as WindowWithGoogleMaps
-        delete windowWithLoading.googleMapsLoading
-        reject(new Error('Failed to load Google Maps'))
-      }
-      document.head.appendChild(script)
-    })
-
-    ;(window as WindowWithGoogleMaps).googleMapsLoading = loadingPromise
-    return loadingPromise
+    debounceRef.current = setTimeout(() => {
+      fetchSuggestions(query)
+    }, 300)
   }
 
-  // Parse address components
-  const parseAddressComponents = (place: GoogleMapsPlace): AddressDetails => {
-    const addressDetails: AddressDetails = {
-      fullAddress: place.formatted_address || '',
-      placeId: place.place_id,
-      latitude: place.geometry?.location?.lat(),
-      longitude: place.geometry?.location?.lng()
-    }
-
-    if (place.address_components) {
-      for (const component of place.address_components) {
-        const componentType = component.types[0]
-        switch (componentType) {
-          case 'street_number':
-            addressDetails.streetNumber = component.long_name
-            break
-          case 'route':
-            addressDetails.route = component.long_name
-            break
-          case 'locality':
-          case 'administrative_area_level_3':
-            addressDetails.city = component.long_name
-            break
-          case 'administrative_area_level_1':
-            addressDetails.state = component.short_name
-            break
-          case 'country':
-            addressDetails.country = component.long_name
-            break
-          case 'postal_code':
-            addressDetails.postalCode = component.long_name
-            break
-        }
-      }
-    }
-
-    return addressDetails
+  const handleSelect = (feature: MapboxFeature) => {
+    setValue(feature.place_name)
+    setSuggestions([])
+    setIsOpen(false)
+    onAddressSelect(parseMapboxFeature(feature))
   }
 
-  // Initialize autocomplete (using legacy API for stability)
+  // Close dropdown on outside click
   useEffect(() => {
-    const initAutocomplete = async () => {
-      try {
-        await loadGoogleMaps()
-
-        if (!inputRef.current) return
-
-        const windowWithMaps = window as WindowWithGoogleMaps
-        const autocomplete = new windowWithMaps.google!.maps!.places!.Autocomplete(inputRef.current, {
-          types: ['address'],
-          componentRestrictions: { country: ['us', 'mx'] }
-        })
-
-        autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace()
-
-          if (!place.geometry) {
-            setError('No se encontró información para esta dirección')
-            return
-          }
-
-          const addressDetails = parseAddressComponents(place)
-          onAddressSelect(addressDetails)
-          setError(null)
-        })
-
-        autocompleteRef.current = autocomplete
-        setIsLoaded(true)
-
-      } catch (error) {
-        console.error('Error loading autocomplete:', error)
-        setError('Error cargando el autocompletado')
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
       }
     }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
-    initAutocomplete()
-
+  // Cleanup debounce on unmount
+  useEffect(() => {
     return () => {
-      if (autocompleteRef.current) {
-        const windowWithMaps = window as WindowWithGoogleMaps
-        if (windowWithMaps.google?.maps?.event?.clearInstanceListeners) {
-          windowWithMaps.google.maps.event.clearInstanceListeners(autocompleteRef.current)
-        }
-      }
+      if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [onAddressSelect])
-
-  if (error) {
-    return (
-      <div className={className}>
-        <input
-          type="text"
-          placeholder={placeholder}
-          disabled={disabled}
-          className="w-full px-4 py-3 border border-red-300 bg-red-50 text-app rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-        />
-        <p className="mt-1 text-sm text-red-600">{error}</p>
-      </div>
-    )
-  }
+  }, [])
 
   return (
-    <div className={className}>
+    <div ref={containerRef} className={`relative ${className}`}>
       <input
-        ref={inputRef}
         type="text"
-        placeholder={isLoaded ? placeholder : "Cargando..."}
-        defaultValue={initialValue}
-        disabled={disabled || !isLoaded}
-        className="w-full px-4 py-3 border border-gray-300 text-app bg-card rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+        value={value}
+        onChange={handleInputChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoComplete="off"
+        className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-app bg-card ${
+          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
+        }`}
       />
-      {!isLoaded && (
-        <p className="mt-1 text-xs text-gray-500">Cargando autocompletado...</p>
+
+      {isLoading && (
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-1 text-sm text-red-600">{error}</p>
+      )}
+
+      {isOpen && suggestions.length > 0 && (
+        <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+          {suggestions.map((feature) => (
+            <li
+              key={feature.id}
+              onMouseDown={() => handleSelect(feature)}
+              className="px-4 py-3 text-sm text-gray-800 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+            >
+              <span className="font-medium">{feature.text}</span>
+              {feature.address && (
+                <span className="text-gray-500"> {feature.address}</span>
+              )}
+              <p className="text-xs text-gray-400 mt-0.5 truncate">{feature.place_name}</p>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
 }
-
-export type { AddressDetails }
