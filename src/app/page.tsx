@@ -5,8 +5,9 @@ import dynamic from 'next/dynamic';
 import { motion } from 'motion/react';
 import BlurText from '@/components/ui/BlurText';
 
-// Prism uses WebGL — must be client-only (no SSR)
+// WebGL components — client-only (no SSR)
 const Prism = dynamic(() => import('@/components/ui/Prism'), { ssr: false });
+const Particles = dynamic(() => import('@/components/ui/Particles'), { ssr: false });
 
 // Reusable scroll-reveal wrapper
 const FadeUp = ({
@@ -319,22 +320,37 @@ export default function Home() {
       </section>
 
       {/* ── Features ───────────────────────────────────────────────────────── */}
-      <section id="features" style={{ backgroundColor: '#ffffff' }}>
-        <div className="max-w-6xl mx-auto px-6 py-28">
+      <section id="features" className="relative overflow-hidden" style={{ backgroundColor: '#000000' }}>
+        {/* Particles background */}
+        <div className="absolute inset-0 pointer-events-none">
+          <Particles
+            particleCount={160}
+            particleSpread={12}
+            speed={0.06}
+            particleBaseSize={80}
+            particleColors={['#6366F1', '#818CF8', '#A5B4FC', '#ffffff']}
+            alphaParticles={true}
+            sizeRandomness={0.8}
+            cameraDistance={22}
+          />
+        </div>
+
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-28">
 
           <FadeIn className="text-center">
             <p className="text-xs font-semibold uppercase tracking-widest mb-4"
-              style={{ color: '#6366F1' }}>
+              style={{ color: '#818CF8' }}>
               Lo que incluye
             </p>
           </FadeIn>
           <FadeUp delay={0.05} className="text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1C1C1E' }}>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">
               Todo en un solo lugar
             </h2>
           </FadeUp>
           <FadeUp delay={0.1} className="text-center">
-            <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed" style={{ color: '#8E8E93' }}>
+            <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed"
+              style={{ color: 'rgba(255,255,255,0.5)' }}>
               Sin apps extras, sin complicaciones. Un sistema pensado para negocios locales que quieren verse profesionales.
             </p>
           </FadeUp>
@@ -343,23 +359,25 @@ export default function Home() {
             {features.map((f, i) => (
               <FadeUp key={i} delay={i * 0.1}>
                 <div className="rounded-2xl p-8 transition-all duration-300 h-full"
-                  style={{ backgroundColor: '#F2F2F7', border: '1px solid #E5E5EA' }}
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    backdropFilter: 'blur(12px)',
+                  }}
                   onMouseEnter={e => {
-                    (e.currentTarget as HTMLDivElement).style.backgroundColor = '#ffffff';
-                    (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 30px rgba(99,102,241,0.08)';
-                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(99,102,241,0.2)';
+                    (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(99,102,241,0.12)';
+                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(99,102,241,0.4)';
                   }}
                   onMouseLeave={e => {
-                    (e.currentTarget as HTMLDivElement).style.backgroundColor = '#F2F2F7';
-                    (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
-                    (e.currentTarget as HTMLDivElement).style.borderColor = '#E5E5EA';
+                    (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(255,255,255,0.05)';
+                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.1)';
                   }}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-5"
-                    style={{ backgroundColor: '#EEF2FF', color: '#6366F1' }}>
+                    style={{ backgroundColor: 'rgba(99,102,241,0.2)', color: '#818CF8' }}>
                     {f.icon}
                   </div>
-                  <h3 className="text-base font-semibold mb-2" style={{ color: '#1C1C1E' }}>{f.title}</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: '#8E8E93' }}>{f.desc}</p>
+                  <h3 className="text-base font-semibold mb-2 text-white">{f.title}</h3>
+                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{f.desc}</p>
                 </div>
               </FadeUp>
             ))}
