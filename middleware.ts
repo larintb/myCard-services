@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { jwtVerify } from 'jose'
 
-export function middleware(request: NextRequest) {
+const secret = new TextEncoder().encode(
+  process.env.JWT_SECRET ?? 'mycard-jwt-secret-change-this-in-production-min-32-chars'
+)
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Skip middleware for static files, API routes, and auth pages
@@ -18,36 +23,29 @@ export function middleware(request: NextRequest) {
   }
 
   // Check if it's a business admin route (format: /[businessname]/...)
-  const businessRouteMatch = pathname.match(/^\/([^\/]+)\/(dashboard|services|appointments|clients|hours|settings|reports)/)
+  const businessRouteMatch = pathname.match(/^\/([^/]+)\/(dashboard|services|appointments|clients|hours|settings|reports)/)
 
   if (businessRouteMatch) {
     const businessName = businessRouteMatch[1]
-
-    // Check for authentication cookie/header
     const authCookie = request.cookies.get('businessAdmin')
-    const authHeader = request.headers.get('authorization')
 
-    // If no authentication found, redirect to login
-    if (!authCookie && !authHeader) {
+    if (!authCookie?.value) {
       const loginUrl = new URL(`/${businessName}/login`, request.url)
       return NextResponse.redirect(loginUrl)
     }
 
-    // If cookie exists, verify it's valid (basic check)
-    if (authCookie) {
-      try {
-        const userData = JSON.parse(authCookie.value)
-        if (!userData.businessId || !userData.id) {
-          const loginUrl = new URL(`/${businessName}/login`, request.url)
-          return NextResponse.redirect(loginUrl)
-        }
-      } catch {
-        // Invalid cookie format
-        const loginUrl = new URL(`/${businessName}/login`, request.url)
-        const response = NextResponse.redirect(loginUrl)
-        response.cookies.delete('businessAdmin')
-        return response
+    // Verify JWT signature — rejects forged or tampered cookies
+    try {
+      const { payload } = await jwtVerify(authCookie.value, secret)
+
+      if (!payload.businessId || !payload.id) {
+        throw new Error('Invalid payload')
       }
+    } catch {
+      const loginUrl = new URL(`/${businessName}/login`, request.url)
+      const response = NextResponse.redirect(loginUrl)
+      response.cookies.delete('businessAdmin')
+      return response
     }
   }
 
@@ -56,13 +54,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 }

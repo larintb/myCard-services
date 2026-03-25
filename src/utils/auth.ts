@@ -9,24 +9,50 @@ export interface BusinessAdminUser {
   businessName: string
 }
 
-// Set business admin session (localStorage + cookie)
-export function setBusinessAdminSession(user: BusinessAdminUser): void {
-  // Store in localStorage for client-side access
-  localStorage.setItem('businessAdmin', JSON.stringify(user))
+// Set business admin session — signs a JWT server-side and stores it in a secure cookie
+export async function setBusinessAdminSession(user: BusinessAdminUser): Promise<void> {
+  // Request a signed JWT from the server
+  const response = await fetch('/api/auth/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(user)
+  })
 
-  // Set cookie for middleware authentication (7 days)
-  const maxAge = 7 * 24 * 60 * 60 // 7 days in seconds
-  document.cookie = `businessAdmin=${JSON.stringify(user)}; path=/; max-age=${maxAge}; secure; samesite=strict`
+  if (!response.ok) {
+    throw new Error('Failed to create session')
+  }
+
+  const { token } = await response.json()
+
+  // Store the JWT (signed) in localStorage for client-side reads
+  localStorage.setItem('businessAdmin', token)
+
+  // Set the JWT as a cookie for middleware authentication (7 days)
+  const maxAge = 7 * 24 * 60 * 60
+  document.cookie = `businessAdmin=${token}; path=/; max-age=${maxAge}; secure; samesite=strict`
 }
 
-// Get business admin session from localStorage
+// Parse the JWT payload from localStorage (no signature verification — that's done server-side)
+// Returns the decoded user data for display purposes
 export function getBusinessAdminSession(): BusinessAdminUser | null {
   try {
-    const savedUser = localStorage.getItem('businessAdmin')
-    if (savedUser) {
-      const userData = JSON.parse(savedUser)
-      if (userData.businessId && userData.id) {
-        return userData
+    const token = localStorage.getItem('businessAdmin')
+    if (!token) return null
+
+    // JWT structure: header.payload.signature — decode payload (base64url)
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+
+    if (payload.id && payload.businessId) {
+      return {
+        id: payload.id,
+        businessId: payload.businessId,
+        first_name: payload.first_name ?? '',
+        last_name: payload.last_name ?? '',
+        email: payload.email ?? '',
+        businessName: payload.businessName ?? ''
       }
     }
   } catch (error) {
@@ -77,7 +103,6 @@ export async function requireBusinessAdminAuth(businessName: string, router: Rou
   // Validate that user belongs to this specific business
   const business = await getBusinessByName(businessName)
   if (!business || business.id !== user.businessId) {
-    // User doesn't belong to this business - clear session and redirect
     clearBusinessAdminSession()
     router.push(`/${businessName}/login`)
     return null
