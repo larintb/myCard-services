@@ -1,17 +1,30 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+let _client: SupabaseClient | null = null
 
-if (!supabaseServiceKey) {
-  throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set. This file must only be used server-side.')
+// Admin client with service role permissions (bypasses RLS).
+// Lazily instantiated so the module can be imported without crashing
+// during Next.js build-time static analysis.
+// NEVER import this in client components or pages — server/API routes only.
+export function getSupabaseAdmin(): SupabaseClient {
+  if (_client) return _client
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!url || !key) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set. This must only be called server-side at request time.')
+  }
+
+  _client = createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  })
+  return _client
 }
 
-// Admin client with service role permissions (bypasses RLS)
-// NEVER import this in client components or pages — server/API routes only
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+// Convenience re-export for the common pattern `supabaseAdmin.from(...)`
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getSupabaseAdmin() as unknown as Record<string | symbol, unknown>)[prop]
   }
 })
