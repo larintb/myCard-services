@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
+import { DemoRequestSchema } from '@/lib/schemas'
 
 // Helper function to verify superuser authentication
 async function verifySuperuser(request: NextRequest) {
@@ -46,31 +48,25 @@ async function verifySuperuser(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 5 requests per IP per 10 minutes
+    const ip = getClientIp(request)
+    const limit = rateLimit(`demo-requests:${ip}`, { limit: 5, windowMs: 10 * 60 * 1000 })
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Demasiadas solicitudes. Intenta de nuevo en unos minutos.' },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
-    const { name, business_name, email, message } = body
-
-    // Validate required fields
-    if (!name || !business_name || !email) {
+    const result = DemoRequestSchema.safeParse(body)
+    if (!result.success) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Nombre, nombre del negocio y email son requeridos'
-        },
+        { success: false, error: result.error.flatten().fieldErrors },
         { status: 400 }
       )
     }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Formato de email inválido'
-        },
-        { status: 400 }
-      )
-    }
+    const { name, business_name, email, message } = result.data
 
     // Insert demo request into database
     const { data, error } = await supabase

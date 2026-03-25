@@ -1,19 +1,32 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 import { createAppointment } from '@/lib/db/appointments'
+import { CreateAppointmentSchema } from '@/lib/schemas'
 
 // POST /api/appointments
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { business_id, service_id, user_id, appointment_date, appointment_time, notes } = body
 
-    if (!business_id || !service_id || !user_id || !appointment_date || !appointment_time) {
+    // Map field names from client (user_id → clientId) before validation
+    const normalized = {
+      businessId: body.business_id,
+      clientId: body.user_id,
+      serviceId: body.service_id,
+      appointmentDate: body.appointment_date,
+      appointmentTime: body.appointment_time,
+      notes: body.notes
+    }
+
+    const result = CreateAppointmentSchema.safeParse(normalized)
+    if (!result.success) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
+        { success: false, error: result.error.flatten().fieldErrors },
         { status: 400 }
       )
     }
+
+    const { businessId: business_id, clientId: user_id, serviceId: service_id, appointmentDate: appointment_date, appointmentTime: appointment_time, notes } = result.data
 
     // Check if the slot is still available
     const { data: existingAppointment, error: checkError } = await supabaseAdmin

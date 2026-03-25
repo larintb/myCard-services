@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 
 // Generar código de check-in
 export async function POST(request: NextRequest) {
   try {
     const { appointmentId } = await request.json()
-
-    console.log('Check-in code generation requested for appointment:', appointmentId)
 
     if (!appointmentId) {
       return NextResponse.json({
@@ -22,8 +20,6 @@ export async function POST(request: NextRequest) {
       .eq('id', appointmentId)
       .single()
 
-    console.log('Appointment query result:', { appointment, appointmentError })
-
     if (appointmentError || !appointment) {
       console.error('Appointment not found. Error:', appointmentError)
       return NextResponse.json({
@@ -38,13 +34,6 @@ export async function POST(request: NextRequest) {
     const maxDate = new Date(today)
     maxDate.setDate(today.getDate() + 7)
     const maxDateString = maxDate.toISOString().split('T')[0]
-
-    console.log('Date validation:', {
-      appointmentDate: appointment.appointment_date,
-      todayString,
-      maxDateString,
-      isValid: appointment.appointment_date >= todayString && appointment.appointment_date <= maxDateString
-    })
 
     if (appointment.appointment_date < todayString) {
       return NextResponse.json({

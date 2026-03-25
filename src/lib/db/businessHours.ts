@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 
 export interface BusinessHour {
   id?: string
@@ -12,9 +12,6 @@ export interface BusinessHour {
 
 // Get business hours for a business
 export async function getBusinessHours(businessId: string): Promise<BusinessHour[]> {
-  console.log('=== DATABASE QUERY DEBUG ===')
-  console.log('Fetching hours for businessId:', businessId)
-  
   const { data, error } = await supabaseAdmin
     .from('business_hours')
     .select('*')
@@ -24,19 +21,6 @@ export async function getBusinessHours(businessId: string): Promise<BusinessHour
   if (error) {
     console.error('Error fetching business hours:', error)
     throw new Error('Failed to fetch business hours')
-  }
-
-  console.log('Raw data from Supabase:', JSON.stringify(data, null, 2))
-  
-  if (data) {
-    data.forEach((record, index) => {
-      console.log(`DB Record ${index}:`)
-      console.log(`  id: ${record.id}`)
-      console.log(`  day_of_week: ${record.day_of_week}`)
-      console.log(`  open_time: "${record.open_time}" (type: ${typeof record.open_time})`)
-      console.log(`  close_time: "${record.close_time}" (type: ${typeof record.close_time})`)
-      console.log(`  is_active: ${record.is_active}`)
-    })
   }
 
   return data || []
@@ -67,24 +51,15 @@ export async function updateBusinessHours(businessId: string, hours: Omit<Busine
         is_active: hour.is_active
       }))
 
-    console.log('=== INSERTING HOURS DEBUG ===')
-    console.log('Active hours to insert:', JSON.stringify(activeHours, null, 2))
-    activeHours.forEach((hour, index) => {
-      console.log(`Insert ${index}: day=${hour.day_of_week}, open="${hour.open_time}", close="${hour.close_time}"`)
-    })
-
     if (activeHours.length > 0) {
-      const { data: insertedData, error: insertError } = await supabaseAdmin
+      const { error: insertError } = await supabaseAdmin
         .from('business_hours')
         .insert(activeHours)
-        .select() // Add select to see what was actually inserted
 
       if (insertError) {
         console.error('Error inserting business hours:', insertError)
         throw insertError
       }
-      
-      console.log('Successfully inserted data:', JSON.stringify(insertedData, null, 2))
     }
   } catch (error) {
     console.error('Error updating business hours:', error)

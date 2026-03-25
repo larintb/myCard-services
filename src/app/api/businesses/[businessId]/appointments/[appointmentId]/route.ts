@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { updateAppointmentStatus } from '@/lib/db/appointments'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 
 interface RouteParams {
   params: Promise<{

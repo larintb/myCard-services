@@ -20,16 +20,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       )
     }
 
-    console.log('=== GET BUSINESS HOURS DEBUG ===')
-    console.log('BusinessId:', businessId)
-    
     const hours = await getBusinessHours(businessId)
-    console.log('Raw hours from database:', JSON.stringify(hours, null, 2))
-    
-    // Log each hour individually
-    hours.forEach((hour, index) => {
-      console.log(`Hour ${index}: day=${hour.day_of_week}, open="${hour.open_time}", close="${hour.close_time}", typeof open=${typeof hour.open_time}, typeof close=${typeof hour.close_time}`)
-    })
 
     return NextResponse.json({
       success: true,
@@ -68,12 +59,8 @@ export async function POST(request: Request, { params }: RouteParams) {
       )
     }
 
-    // Log the data being received for debugging
-    console.log('Received hours data:', JSON.stringify(hours, null, 2))
-
     // Validate and normalize hours format
     for (const hour of hours) {
-      console.log(`Processing hour for day ${hour.day_of_week}: open=${hour.open_time}, close=${hour.close_time}, active=${hour.is_active}`)
       if (
         typeof hour.day_of_week !== 'number' ||
         hour.day_of_week < 0 ||
@@ -86,9 +73,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         )
       }
 
-      // Only validate times if the day is active
       if (hour.is_active) {
-        // Ensure times are provided for active days
         if (!hour.open_time || !hour.close_time) {
           return NextResponse.json(
             { success: false, error: 'Open and close times are required for active days' },
@@ -96,77 +81,51 @@ export async function POST(request: Request, { params }: RouteParams) {
           )
         }
 
-        // Normalize time format - ensure HH:MM format
-        const normalizeTime = (timeStr: string) => {
+        // Normalize time format — ensure HH:MM
+        const normalizeTime = (timeStr: string): string | null => {
           if (!timeStr) return null
+          const cleanTime = timeStr.trim()
 
-          // Handle various time formats
-          let cleanTime = timeStr.trim()
-          
-          // Log the time being processed
-          console.log(`Normalizing time: "${timeStr}" -> "${cleanTime}"`)
-
-          // If already in HH:MM format, validate and return
           const simpleTimeMatch = cleanTime.match(/^(\d{1,2}):(\d{2})$/)
           if (simpleTimeMatch) {
-            const hours = parseInt(simpleTimeMatch[1])
-            const minutes = parseInt(simpleTimeMatch[2])
-            
-            // Validate ranges
-            if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
-              const result = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
-              console.log(`Time normalized successfully: "${cleanTime}" -> "${result}"`)
-              return result
+            const h = parseInt(simpleTimeMatch[1])
+            const m = parseInt(simpleTimeMatch[2])
+            if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+              return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
             }
           }
 
-          // If time doesn't include colon, it might be in HHMM format
-          if (!cleanTime.includes(':') && cleanTime.length === 4) {
-            cleanTime = cleanTime.substring(0, 2) + ':' + cleanTime.substring(2)
-          }
+          // Handle HHMM format without colon
+          const normalized = cleanTime.includes(':')
+            ? cleanTime
+            : cleanTime.length === 4
+              ? cleanTime.substring(0, 2) + ':' + cleanTime.substring(2)
+              : cleanTime
 
-          // Parse the time
-          const timeMatch = cleanTime.match(/^(\d{1,2}):?(\d{2})?$/)
-          if (!timeMatch) {
-            console.log(`Failed to match time pattern: "${cleanTime}"`)
-            return null
-          }
+          const timeMatch = normalized.match(/^(\d{1,2}):?(\d{2})?$/)
+          if (!timeMatch) return null
 
-          const hours = parseInt(timeMatch[1])
-          const minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0
+          const h = parseInt(timeMatch[1])
+          const m = timeMatch[2] ? parseInt(timeMatch[2]) : 0
 
-          // Validate ranges
-          if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-            console.log(`Time out of range: hours=${hours}, minutes=${minutes}`)
-            return null
-          }
+          if (h < 0 || h > 23 || m < 0 || m > 59) return null
 
-          // Return in HH:MM format
-          const result = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
-          console.log(`Time normalized: "${timeStr}" -> "${result}"`)
-          return result
+          return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
         }
 
         const normalizedOpenTime = normalizeTime(hour.open_time)
         const normalizedCloseTime = normalizeTime(hour.close_time)
 
-        console.log(`Day ${hour.day_of_week} - Original: open="${hour.open_time}", close="${hour.close_time}"`)
-        console.log(`Day ${hour.day_of_week} - Normalized: open="${normalizedOpenTime}", close="${normalizedCloseTime}"`)
-
         if (!normalizedOpenTime || !normalizedCloseTime) {
-          const errorMsg = `Invalid time format. Please use HH:MM format (e.g., 09:00, 17:30). Failed on day ${hour.day_of_week}: open="${hour.open_time}", close="${hour.close_time}"`
-          console.error(errorMsg)
           return NextResponse.json(
-            { success: false, error: errorMsg },
+            { success: false, error: `Invalid time format for day ${hour.day_of_week}. Use HH:MM (e.g., 09:00, 17:30)` },
             { status: 400 }
           )
         }
 
-        // Update the hour object with normalized times
         hour.open_time = normalizedOpenTime
         hour.close_time = normalizedCloseTime
 
-        // Validate that close time is after open time
         if (hour.open_time >= hour.close_time) {
           return NextResponse.json(
             { success: false, error: 'Close time must be after open time' },
@@ -174,7 +133,6 @@ export async function POST(request: Request, { params }: RouteParams) {
           )
         }
       } else {
-        // For inactive days, set default times to avoid validation issues
         hour.open_time = hour.open_time || '09:00'
         hour.close_time = hour.close_time || '17:00'
       }

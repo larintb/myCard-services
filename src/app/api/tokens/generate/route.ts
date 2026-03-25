@@ -1,25 +1,27 @@
 import { NextResponse } from 'next/server'
 import { createInvitationToken, generateTokenString } from '@/lib/db/tokens'
 import { getUserById } from '@/lib/db/users'
+import { TokenGenerateSchema } from '@/lib/schemas'
 import { TokenType } from '@/types'
 
 export async function POST(request: Request) {
   try {
-    const { type, createdBy, businessId, expiresInDays } = await request.json()
+    const body = await request.json()
 
-    if (!type || !createdBy) {
+    // Validate createdBy separately (not in schema, it's auth data)
+    const { createdBy } = body
+    if (!createdBy) {
+      return NextResponse.json({ error: 'createdBy is required' }, { status: 400 })
+    }
+
+    const result = TokenGenerateSchema.safeParse(body)
+    if (!result.success) {
       return NextResponse.json(
-        { error: 'Type and createdBy are required' },
+        { error: result.error.flatten().fieldErrors },
         { status: 400 }
       )
     }
-
-    if (!['business_admin', 'final_client'].includes(type)) {
-      return NextResponse.json(
-        { error: 'Invalid token type' },
-        { status: 400 }
-      )
-    }
+    const { type, businessId, expiresInDays } = result.data
 
     // Verify the user creating the token exists and has permission
     const creatorUser = await getUserById(createdBy)

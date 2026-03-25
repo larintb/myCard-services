@@ -1,17 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-// Create a service role client for storage operations
-const supabaseServiceRole = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+import { supabaseAdmin as supabaseServiceRole } from '@/lib/supabase-server'
 
 export async function POST(request: Request) {
   try {
@@ -56,11 +44,6 @@ export async function POST(request: Request) {
     // Convert file to buffer
     const buffer = await file.arrayBuffer()
 
-    // Upload to Supabase Storage
-    console.log('📤 Attempting to upload file:', fileName)
-    console.log('🗃️ File size:', file.size, 'bytes')
-    console.log('📝 Content type:', file.type)
-
     const { data, error } = await supabaseServiceRole.storage
       .from('business-pics')
       .upload(fileName, buffer, {
@@ -69,15 +52,12 @@ export async function POST(request: Request) {
       })
 
     if (error) {
-      console.error('❌ Supabase upload error:', error)
-      console.error('❌ Error details:', JSON.stringify(error, null, 2))
+      console.error('Supabase upload error:', error)
       return NextResponse.json(
         { error: `Upload failed: ${error.message}` },
         { status: 500 }
       )
     }
-
-    console.log('✅ Upload successful:', data)
 
     // Get public URL
     const { data: urlData } = supabaseServiceRole.storage

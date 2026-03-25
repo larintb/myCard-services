@@ -1,18 +1,20 @@
 import { NextResponse } from 'next/server'
 import { getUserByEmail } from '@/lib/db/users'
 import { getBusinessById } from '@/lib/db/businesses'
+import { BusinessLoginSchema } from '@/lib/schemas'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: Request) {
   try {
-    const { email, password, businessId } = await request.json()
-
-    if (!email || !password || !businessId) {
+    const body = await request.json()
+    const result = BusinessLoginSchema.safeParse(body)
+    if (!result.success) {
       return NextResponse.json(
-        { success: false, error: 'Email, password, and business ID are required' },
+        { success: false, error: result.error.flatten().fieldErrors },
         { status: 400 }
       )
     }
+    const { email, password, businessId } = result.data
 
     // Get the user by email
     const user = await getUserByEmail(email)

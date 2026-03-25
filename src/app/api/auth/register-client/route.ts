@@ -2,23 +2,19 @@ import { NextResponse } from 'next/server'
 import { validateToken, markTokenAsUsed } from '@/lib/db/tokens'
 import { createUser } from '@/lib/db/users'
 import { registerClientToBusiness } from '@/lib/db/clientBusinesses'
+import { RegisterClientSchema } from '@/lib/schemas'
 
 export async function POST(request: Request) {
   try {
-    const {
-      token,
-      first_name,
-      last_name,
-      phone
-    } = await request.json()
-
-    // Validation
-    if (!token || !first_name || !last_name || !phone) {
+    const body = await request.json()
+    const result = RegisterClientSchema.safeParse(body)
+    if (!result.success) {
       return NextResponse.json(
-        { error: 'All fields are required' },
+        { error: result.error.flatten().fieldErrors },
         { status: 400 }
       )
     }
+    const { token, first_name, last_name, phone } = result.data
 
     // Validate token
     const tokenData = await validateToken(token)

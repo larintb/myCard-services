@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 import { createService } from '@/lib/db/services'
 
 // Script to create demo data for testing the dashboard

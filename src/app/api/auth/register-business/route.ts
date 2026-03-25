@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { validateToken, markTokenAsUsed } from '@/lib/db/tokens'
 import { createUser } from '@/lib/db/users'
 import { createBusiness, generateBusinessSlug } from '@/lib/db/businesses'
+import { RegisterBusinessSchema } from '@/lib/schemas'
 import bcrypt from 'bcryptjs'
 
 interface SupabaseError {
@@ -12,30 +13,27 @@ interface SupabaseError {
 
 export async function POST(request: Request) {
   try {
+    const body = await request.json()
+    const result = RegisterBusinessSchema.safeParse(body)
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error.flatten().fieldErrors },
+        { status: 400 }
+      )
+    }
     const {
       token,
-      // Personal data
       first_name,
       last_name,
       email,
       phone,
       password,
-      // Business data
       business_name,
       owner_name,
       business_phone,
-      address,
-      business_image
-    } = await request.json()
-
-    // Validation
-    if (!token || !first_name || !last_name || !email || !password ||
-        !business_name || !owner_name || !business_phone || !address) {
-      return NextResponse.json(
-        { error: 'All required fields must be provided' },
-        { status: 400 }
-      )
-    }
+      address
+    } = result.data
+    const business_image = body.business_image
 
     // Validate token
     const tokenData = await validateToken(token)

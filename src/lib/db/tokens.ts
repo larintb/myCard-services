@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 import { InvitationToken, TokenType, TokenStatus, Business } from '@/types'
 
 export interface CreateTokenData {

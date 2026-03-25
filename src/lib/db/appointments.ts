@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 
 export interface Appointment {
   id: string
@@ -23,9 +23,16 @@ export interface CreateAppointmentData {
   notes?: string
 }
 
-// Get appointments for a business
-export async function getAppointmentsByBusinessId(businessId: string): Promise<Appointment[]> {
-  const { data, error } = await supabaseAdmin
+// Get appointments for a business (with optional pagination)
+export async function getAppointmentsByBusinessId(
+  businessId: string,
+  options?: { page?: number; limit?: number }
+): Promise<{ data: Appointment[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+  const page = Math.max(1, options?.page ?? 1)
+  const limit = Math.min(100, Math.max(1, options?.limit ?? 20))
+  const offset = (page - 1) * limit
+
+  const { data, error, count } = await supabaseAdmin
     .from('appointments')
     .select(`
       *,
@@ -41,17 +48,22 @@ export async function getAppointmentsByBusinessId(businessId: string): Promise<A
         price,
         duration_minutes
       )
-    `)
+    `, { count: 'exact' })
     .eq('business_id', businessId)
-    .order('appointment_date', { ascending: true })
+    .order('appointment_date', { ascending: false })
     .order('appointment_time', { ascending: true })
+    .range(offset, offset + limit - 1)
 
   if (error) {
     console.error('Error fetching appointments:', error)
     throw new Error('Failed to fetch appointments')
   }
 
-  return data || []
+  const total = count ?? 0
+  return {
+    data: data || [],
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+  }
 }
 
 // Get today's appointments for a business

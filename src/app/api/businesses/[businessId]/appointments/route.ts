@@ -7,7 +7,7 @@ interface RouteParams {
   }>
 }
 
-// GET /api/businesses/[businessId]/appointments
+// GET /api/businesses/[businessId]/appointments?page=1&limit=20
 export async function GET(request: Request, { params }: RouteParams) {
   try {
     const resolvedParams = await params
@@ -20,11 +20,16 @@ export async function GET(request: Request, { params }: RouteParams) {
       )
     }
 
-    const appointments = await getAppointmentsByBusinessId(businessId)
+    const { searchParams } = new URL(request.url)
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
+
+    const appointments = await getAppointmentsByBusinessId(businessId, { page, limit })
 
     return NextResponse.json({
       success: true,
-      appointments
+      appointments: appointments.data,
+      pagination: appointments.pagination
     })
 
   } catch (error) {

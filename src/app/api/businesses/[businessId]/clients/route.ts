@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 
 interface RouteParams {
   params: Promise<{
@@ -7,7 +7,7 @@ interface RouteParams {
   }>
 }
 
-// GET /api/businesses/[businessId]/clients
+// GET /api/businesses/[businessId]/clients?page=1&limit=20
 export async function GET(request: Request, { params }: RouteParams) {
   try {
     const resolvedParams = await params
@@ -19,6 +19,17 @@ export async function GET(request: Request, { params }: RouteParams) {
         { status: 400 }
       )
     }
+
+    const { searchParams } = new URL(request.url)
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
+    const offset = (page - 1) * limit
+
+    // Get total count for pagination metadata
+    const { count } = await supabaseAdmin
+      .from('client_businesses')
+      .select('*', { count: 'exact', head: true })
+      .eq('business_id', businessId)
 
     // Get clients with their stats
     const { data: clientsData, error: clientsError } = await supabaseAdmin
@@ -36,6 +47,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       `)
       .eq('business_id', businessId)
       .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (clientsError) {
       console.error('Error fetching clients:', clientsError)
@@ -105,7 +117,13 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     return NextResponse.json({
       success: true,
-      clients: clientsWithStats.filter(client => client !== null)
+      clients: clientsWithStats.filter(client => client !== null),
+      pagination: {
+        page,
+        limit,
+        total: count ?? 0,
+        totalPages: Math.ceil((count ?? 0) / limit)
+      }
     })
 
   } catch (error) {
