@@ -2,10 +2,53 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { motion } from 'motion/react';
 import BlurText from '@/components/ui/BlurText';
 
 // Prism uses WebGL — must be client-only (no SSR)
 const Prism = dynamic(() => import('@/components/ui/Prism'), { ssr: false });
+
+// Reusable scroll-reveal wrapper
+const FadeUp = ({
+  children,
+  delay = 0,
+  className,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 32 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true, margin: '-60px' }}
+    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay }}
+    className={className}
+  >
+    {children}
+  </motion.div>
+);
+
+// Fade in (no vertical movement) — for section labels / eyebrows
+const FadeIn = ({
+  children,
+  delay = 0,
+  className,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    whileInView={{ opacity: 1 }}
+    viewport={{ once: true, margin: '-60px' }}
+    transition={{ duration: 0.5, delay }}
+    className={className}
+  >
+    {children}
+  </motion.div>
+);
 
 // ─── Feature data ─────────────────────────────────────────────────────────────
 const features = [
@@ -279,41 +322,46 @@ export default function Home() {
       <section id="features" style={{ backgroundColor: '#ffffff' }}>
         <div className="max-w-6xl mx-auto px-6 py-28">
 
-          {/* Section label */}
-          <p className="text-xs font-semibold uppercase tracking-widest mb-4 text-center"
-            style={{ color: '#6366F1' }}>
-            Lo que incluye
-          </p>
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4"
-            style={{ color: '#1C1C1E' }}>
-            Todo en un solo lugar
-          </h2>
-          <p className="text-center max-w-lg mx-auto mb-16 text-sm leading-relaxed"
-            style={{ color: '#8E8E93' }}>
-            Sin apps extras, sin complicaciones. Un sistema pensado para negocios locales que quieren verse profesionales.
-          </p>
+          <FadeIn className="text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-4"
+              style={{ color: '#6366F1' }}>
+              Lo que incluye
+            </p>
+          </FadeIn>
+          <FadeUp delay={0.05} className="text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1C1C1E' }}>
+              Todo en un solo lugar
+            </h2>
+          </FadeUp>
+          <FadeUp delay={0.1} className="text-center">
+            <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed" style={{ color: '#8E8E93' }}>
+              Sin apps extras, sin complicaciones. Un sistema pensado para negocios locales que quieren verse profesionales.
+            </p>
+          </FadeUp>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {features.map((f, i) => (
-              <div key={i} className="rounded-2xl p-8 transition-all duration-300 group"
-                style={{ backgroundColor: '#F2F2F7', border: '1px solid #E5E5EA' }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLDivElement).style.backgroundColor = '#ffffff';
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 30px rgba(99,102,241,0.08)';
-                  (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(99,102,241,0.2)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLDivElement).style.backgroundColor = '#F2F2F7';
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
-                  (e.currentTarget as HTMLDivElement).style.borderColor = '#E5E5EA';
-                }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-5"
-                  style={{ backgroundColor: '#EEF2FF', color: '#6366F1' }}>
-                  {f.icon}
+              <FadeUp key={i} delay={i * 0.1}>
+                <div className="rounded-2xl p-8 transition-all duration-300 h-full"
+                  style={{ backgroundColor: '#F2F2F7', border: '1px solid #E5E5EA' }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLDivElement).style.backgroundColor = '#ffffff';
+                    (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 30px rgba(99,102,241,0.08)';
+                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(99,102,241,0.2)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLDivElement).style.backgroundColor = '#F2F2F7';
+                    (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
+                    (e.currentTarget as HTMLDivElement).style.borderColor = '#E5E5EA';
+                  }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-5"
+                    style={{ backgroundColor: '#EEF2FF', color: '#6366F1' }}>
+                    {f.icon}
+                  </div>
+                  <h3 className="text-base font-semibold mb-2" style={{ color: '#1C1C1E' }}>{f.title}</h3>
+                  <p className="text-sm leading-relaxed" style={{ color: '#8E8E93' }}>{f.desc}</p>
                 </div>
-                <h3 className="text-base font-semibold mb-2" style={{ color: '#1C1C1E' }}>{f.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: '#8E8E93' }}>{f.desc}</p>
-              </div>
+              </FadeUp>
             ))}
           </div>
         </div>
@@ -322,36 +370,41 @@ export default function Home() {
       {/* ── How it works ───────────────────────────────────────────────────── */}
       <section id="how-it-works" style={{ backgroundColor: '#F2F2F7' }}>
         <div className="max-w-6xl mx-auto px-6 py-28">
-          <p className="text-xs font-semibold uppercase tracking-widest mb-4 text-center"
-            style={{ color: '#6366F1' }}>
-            Proceso
-          </p>
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4"
-            style={{ color: '#1C1C1E' }}>
-            En tres pasos
-          </h2>
-          <p className="text-center max-w-lg mx-auto mb-16 text-sm leading-relaxed"
-            style={{ color: '#8E8E93' }}>
-            Desde la configuración hasta el primer cliente que reserva, todo fluye solo.
-          </p>
+          <FadeIn className="text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-4"
+              style={{ color: '#6366F1' }}>
+              Proceso
+            </p>
+          </FadeIn>
+          <FadeUp delay={0.05} className="text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1C1C1E' }}>
+              En tres pasos
+            </h2>
+          </FadeUp>
+          <FadeUp delay={0.1} className="text-center">
+            <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed" style={{ color: '#8E8E93' }}>
+              Desde la configuración hasta el primer cliente que reserva, todo fluye solo.
+            </p>
+          </FadeUp>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {steps.map((s, i) => (
-              <div key={i} className="relative">
-                {/* Connector line (desktop) */}
-                {i < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-5 left-full w-full h-px -translate-x-4"
-                    style={{ background: 'linear-gradient(to right, #E5E5EA, transparent)', zIndex: 0 }} />
-                )}
-                <div className="relative z-10">
-                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-5 text-sm font-bold"
-                    style={{ backgroundColor: '#6366F1', color: '#fff' }}>
-                    {s.n}
+              <FadeUp key={i} delay={i * 0.12}>
+                <div className="relative">
+                  {i < steps.length - 1 && (
+                    <div className="hidden md:block absolute top-5 left-full w-full h-px -translate-x-4"
+                      style={{ background: 'linear-gradient(to right, #E5E5EA, transparent)', zIndex: 0 }} />
+                  )}
+                  <div className="relative z-10">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-5 text-sm font-bold"
+                      style={{ backgroundColor: '#6366F1', color: '#fff' }}>
+                      {s.n}
+                    </div>
+                    <h3 className="text-base font-semibold mb-2" style={{ color: '#1C1C1E' }}>{s.title}</h3>
+                    <p className="text-sm leading-relaxed" style={{ color: '#8E8E93' }}>{s.desc}</p>
                   </div>
-                  <h3 className="text-base font-semibold mb-2" style={{ color: '#1C1C1E' }}>{s.title}</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: '#8E8E93' }}>{s.desc}</p>
                 </div>
-              </div>
+              </FadeUp>
             ))}
           </div>
         </div>
@@ -360,23 +413,28 @@ export default function Home() {
       {/* ── Pricing ────────────────────────────────────────────────────────── */}
       <section id="pricing" style={{ backgroundColor: '#ffffff' }}>
         <div className="max-w-6xl mx-auto px-6 py-28">
-          <p className="text-xs font-semibold uppercase tracking-widest mb-4 text-center"
-            style={{ color: '#6366F1' }}>
-            Planes
-          </p>
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4"
-            style={{ color: '#1C1C1E' }}>
-            Precios transparentes
-          </h2>
-          <p className="text-center max-w-lg mx-auto mb-16 text-sm"
-            style={{ color: '#8E8E93' }}>
-            Sin tarifas ocultas. Cancela cuando quieras.
-          </p>
+          <FadeIn className="text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-4"
+              style={{ color: '#6366F1' }}>
+              Planes
+            </p>
+          </FadeIn>
+          <FadeUp delay={0.05} className="text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1C1C1E' }}>
+              Precios transparentes
+            </h2>
+          </FadeUp>
+          <FadeUp delay={0.1} className="text-center">
+            <p className="max-w-lg mx-auto mb-16 text-sm" style={{ color: '#8E8E93' }}>
+              Sin tarifas ocultas. Cancela cuando quieras.
+            </p>
+          </FadeUp>
 
           <div className="flex flex-col lg:flex-row items-stretch justify-center gap-6 max-w-3xl mx-auto">
 
             {/* Inicial */}
-            <div className="flex-1 rounded-2xl p-8 flex flex-col"
+            <FadeUp delay={0.1} className="flex-1">
+            <div className="h-full rounded-2xl p-8 flex flex-col"
               style={{ border: '1px solid #E5E5EA', backgroundColor: '#F2F2F7' }}>
               <p className="text-xs font-semibold uppercase tracking-widest mb-3"
                 style={{ color: '#8E8E93' }}>Inicial</p>
@@ -408,9 +466,11 @@ export default function Home() {
                 Elegir Inicial
               </button>
             </div>
+            </FadeUp>
 
             {/* Pro */}
-            <div className="flex-1 rounded-2xl p-8 flex flex-col relative overflow-hidden"
+            <FadeUp delay={0.2} className="flex-1">
+            <div className="h-full rounded-2xl p-8 flex flex-col relative overflow-hidden"
               style={{ backgroundColor: '#6366F1' }}>
               {/* Subtle glow */}
               <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full opacity-20 pointer-events-none"
@@ -450,6 +510,7 @@ export default function Home() {
                 Elegir Pro
               </button>
             </div>
+            </FadeUp>
           </div>
         </div>
       </section>
@@ -457,18 +518,24 @@ export default function Home() {
       {/* ── Contact / Demo form ─────────────────────────────────────────────── */}
       <section id="contact" style={{ backgroundColor: '#F2F2F7' }}>
         <div className="max-w-2xl mx-auto px-6 py-28">
-          <p className="text-xs font-semibold uppercase tracking-widest mb-4 text-center"
-            style={{ color: '#6366F1' }}>
-            Contacto
-          </p>
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-3"
-            style={{ color: '#1C1C1E' }}>
-            ¿Listo para empezar?
-          </h2>
-          <p className="text-center text-sm mb-10" style={{ color: '#8E8E93' }}>
-            Cuéntanos de tu negocio y te contactamos para configurar todo.
-          </p>
+          <FadeIn className="text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-4"
+              style={{ color: '#6366F1' }}>
+              Contacto
+            </p>
+          </FadeIn>
+          <FadeUp delay={0.05} className="text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3" style={{ color: '#1C1C1E' }}>
+              ¿Listo para empezar?
+            </h2>
+          </FadeUp>
+          <FadeUp delay={0.1} className="text-center">
+            <p className="text-sm mb-10" style={{ color: '#8E8E93' }}>
+              Cuéntanos de tu negocio y te contactamos para configurar todo.
+            </p>
+          </FadeUp>
 
+          <FadeUp delay={0.15}>
           <div className="bg-white rounded-2xl p-8" style={{ boxShadow: '0 2px 24px rgba(0,0,0,0.06)' }}>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -554,6 +621,7 @@ export default function Home() {
               </button>
             </form>
           </div>
+          </FadeUp>
         </div>
       </section>
 
