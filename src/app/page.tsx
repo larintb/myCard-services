@@ -238,13 +238,13 @@ export default function Home() {
         {/* Prism background — fills entire section */}
         <div className="absolute inset-0">
           <Prism
-            animationType="3drotate"
+            animationType="rotate"
             timeScale={0.4}
-            scale={4.2}
+            scale={2.5}
             glow={1.2}
             bloom={1.1}
             noise={0.18}
-            colorFrequency={0.9}
+            colorFrequency={0.25}
             transparent={true}
           />
         </div>
@@ -300,9 +300,9 @@ export default function Home() {
             <button
               onClick={() => scrollTo('how-it-works')}
               className="px-8 py-3.5 rounded-full text-sm font-medium transition-all cursor-pointer"
-              style={{ color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.15)' }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
+              style={{ color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.55)', backgroundColor: 'rgba(255,255,255,0.08)' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.16)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.8)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.55)'; }}
             >
               Ver cómo funciona
             </button>
