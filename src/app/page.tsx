@@ -427,19 +427,13 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {steps.map((s, i) => (
               <FadeUp key={i} delay={i * 0.12}>
-                <div className="relative">
-                  {i < steps.length - 1 && (
-                    <div className="hidden md:block absolute top-5 left-full w-full h-px -translate-x-4"
-                      style={{ background: 'linear-gradient(to right, rgba(99,102,241,0.4), transparent)', zIndex: 0 }} />
-                  )}
-                  <div className="relative z-10">
-                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-5 text-sm font-bold"
-                      style={{ backgroundColor: '#6366F1', color: '#fff', boxShadow: '0 0 20px rgba(99,102,241,0.5)' }}>
-                      {s.n}
-                    </div>
-                    <h3 className="text-base font-semibold mb-2 text-white">{s.title}</h3>
-                    <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{s.desc}</p>
+                <div>
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-5 text-sm font-bold"
+                    style={{ backgroundColor: '#6366F1', color: '#fff', boxShadow: '0 0 20px rgba(99,102,241,0.5)' }}>
+                    {s.n}
                   </div>
+                  <h3 className="text-base font-semibold mb-2 text-white">{s.title}</h3>
+                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{s.desc}</p>
                 </div>
               </FadeUp>
             ))}
