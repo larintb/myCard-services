@@ -1,5 +1,7 @@
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
 import { Business, BusinessTheme } from '@/types'
+import { generateBusinessSlug } from '@/utils/slug'
+export { generateBusinessSlug } from '@/utils/slug'
 
 export interface CreateBusinessData {
   owner_id: string
@@ -66,26 +68,20 @@ export async function getBusinessByOwnerId(ownerId: string): Promise<Business | 
 }
 
 // Get business by name (for dynamic routes like /bella-salon/login)
-export async function getBusinessByName(businessName: string): Promise<Business | null> {
-  // Convert URL-friendly name back to search pattern
-  const searchName = businessName.replace(/-/g, ' ')
-
+export async function getBusinessByName(slugParam: string): Promise<Business | null> {
   const { data, error } = await supabaseAdmin
     .from('businesses')
     .select('*')
-    .ilike('business_name', `%${searchName}%`)
-    .limit(1)
 
   if (error) {
     console.error('Error fetching business by name:', error)
     return null
   }
 
-  if (!data || data.length === 0) {
-    return null
-  }
+  if (!data || data.length === 0) return null
 
-  return data[0]
+  const targetSlug = generateBusinessSlug(slugParam.replace(/-/g, ' '))
+  return data.find(b => generateBusinessSlug(b.business_name) === targetSlug) || null
 }
 
 // Get all businesses
@@ -153,15 +149,6 @@ export async function deleteBusiness(businessId: string): Promise<void> {
   }
 }
 
-// Generate URL-friendly business name for routes
-export function generateBusinessSlug(businessName: string): string {
-  return businessName
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single
-    .trim()
-}
 
 // Get business stats for dashboard
 export async function getBusinessStats() {

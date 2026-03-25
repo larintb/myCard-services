@@ -1,8 +1,20 @@
 import { NextResponse } from 'next/server'
 import { validateToken, getTokenWithBusiness, getUserByToken, getTokenByString } from '@/lib/db/tokens'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
+import { generateBusinessSlug } from '@/utils/slug'
 
 export async function POST(request: Request) {
   try {
+    // Rate limit: 20 requests per IP per minute
+    const ip = getClientIp(request)
+    const limit = rateLimit(`token-validate:${ip}`, { limit: 20, windowMs: 60 * 1000 })
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const { token, type } = await request.json()
 
     if (!token) {
@@ -12,15 +24,26 @@ export async function POST(request: Request) {
       )
     }
 
-    // First try to validate as an active token
+    // Try to validate as an active token first
     let tokenData = await validateToken(token)
+    let canRegister = true
 
-    // If not active, check if it's a used token (for returning clients)
+    // If not active, check if it's a used token (for returning clients only)
     if (!tokenData) {
       const usedTokenData = await getTokenByString(token)
+
       if (usedTokenData && usedTokenData.status === 'used') {
+        // Verify a user actually exists for this token before allowing access
+        const existingUser = await getUserByToken(token)
+        if (!existingUser) {
+          // Token is used but no user found — invalid state, reject
+          return NextResponse.json({
+            success: false,
+            error: 'Token is invalid or expired'
+          }, { status: 400 })
+        }
         tokenData = usedTokenData
-        // Note: could track isUsedToken here if needed for future logic
+        canRegister = false  // Used token: returning user only, no new registration
       }
     }
 
@@ -39,8 +62,16 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    const responseData: { success: boolean; token: { id: string; type: string; status: string; expires_at: string | null }; business?: { id: string; business_name: string; owner_name: string; phone: string; address: string; business_image_url: string | null; theme_settings: object; slug: string }; user?: { id: string; first_name?: string; last_name?: string; phone?: string; role?: string }; isRegistered?: boolean } = {
+    const responseData: {
+      success: boolean
+      canRegister: boolean
+      token: { id: string; type: string; status: string; expires_at: string | null }
+      business?: { id: string; business_name: string; owner_name: string; phone: string; address: string; business_image_url: string | null; theme_settings: object; slug: string }
+      user?: { id: string; first_name?: string; last_name?: string; phone?: string; role?: string }
+      isRegistered?: boolean
+    } = {
       success: true,
+      canRegister,
       token: {
         id: tokenData.id,
         type: tokenData.type,
@@ -61,7 +92,7 @@ export async function POST(request: Request) {
           address: tokenWithBusiness.business.address,
           business_image_url: tokenWithBusiness.business.business_image_url || null,
           theme_settings: tokenWithBusiness.business.theme_settings || {},
-          slug: tokenWithBusiness.business.business_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+          slug: generateBusinessSlug(tokenWithBusiness.business.business_name)
         }
       }
 
