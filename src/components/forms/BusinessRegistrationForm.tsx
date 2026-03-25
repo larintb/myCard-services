@@ -1,13 +1,34 @@
 'use client'
 
-import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
-import { AddressAutocomplete, AddressDetails } from '@/components/ui/AddressAutocomplete'
-import { ClientThemeToggle } from '@/components/ui/ClientThemeToggle'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Image from 'next/image'
+import { MapboxMap } from '@/components/ui/MapboxMap'
 import { ImageUploader } from '@/components/ui/ImageUploader'
+import { generateBusinessSlug } from '@/utils/slug'
 import { BusinessAdminRegistrationForm, User, Business } from '@/types'
+
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
+const TOTAL_STEPS = 8
+
+interface AddressSuggestion {
+  id: string
+  place_name: string
+  center: [number, number]
+  text: string
+  address?: string
+  context?: Array<{ id: string; text: string }>
+}
+
+interface AddressDetails {
+  fullAddress: string
+  latitude?: number
+  longitude?: number
+  city?: string
+  state?: string
+  country?: string
+  postalCode?: string
+  placeId?: string
+}
 
 interface BusinessRegistrationSuccessData {
   success: boolean
@@ -21,7 +42,42 @@ interface BusinessRegistrationProps {
   onSuccess: (data: BusinessRegistrationSuccessData) => void
 }
 
+function parseFeature(f: AddressSuggestion): AddressDetails {
+  const d: AddressDetails = {
+    fullAddress: f.place_name,
+    placeId: f.id,
+    longitude: f.center[0],
+    latitude: f.center[1],
+  }
+  if (f.context) {
+    for (const ctx of f.context) {
+      const type = ctx.id.split('.')[0]
+      if (type === 'place' || type === 'locality') d.city = ctx.text
+      else if (type === 'region') d.state = ctx.text
+      else if (type === 'country') d.country = ctx.text
+      else if (type === 'postcode') d.postalCode = ctx.text
+    }
+  }
+  return d
+}
+
+// Step labels for progress display
+const STEP_TITLES = [
+  'Tu nombre',
+  'Tu contacto',
+  'Contraseña',
+  'Nombre del negocio',
+  'Sobre el negocio',
+  'Ubicación',
+  'Logo',
+  'Todo listo',
+]
+
 export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrationProps) {
+  const [step, setStep] = useState(1)
+  const [direction, setDirection] = useState<'forward' | 'back'>('forward')
+  const [animKey, setAnimKey] = useState(0)
+
   const [formData, setFormData] = useState<BusinessAdminRegistrationForm>({
     first_name: '',
     last_name: '',
@@ -33,102 +89,153 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
     business_phone: '',
     address: '',
   })
-
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [errors, setErrors] = useState<Partial<BusinessAdminRegistrationForm & { confirmPassword: string }>>({})
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [addressDetails, setAddressDetails] = useState<AddressDetails | null>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [focusedField, setFocusedField] = useState<string | null>(null)
+  const [origin, setOrigin] = useState('')
 
-  const handleInputChange = (field: keyof BusinessAdminRegistrationForm) => (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    setFormData(prev => ({ ...prev, [field]: e.target.value }))
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }))
+  // Address autocomplete state
+  const [addressQuery, setAddressQuery] = useState('')
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([])
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [addressLoading, setAddressLoading] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const addressContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setOrigin(window.location.origin) }, [])
+
+  useEffect(() => {
+    document.body.style.backgroundColor = '#F2F2F7'
+    return () => { document.body.style.backgroundColor = '' }
+  }, [])
+
+  // Pre-fill owner_name when reaching step 5
+  useEffect(() => {
+    if (step === 5 && !formData.owner_name.trim()) {
+      setFormData(prev => ({
+        ...prev,
+        owner_name: `${prev.first_name} ${prev.last_name}`.trim()
+      }))
     }
-  }
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleAddressSelect = (address: AddressDetails) => {
-    setAddressDetails(address)
-    setFormData(prev => ({ ...prev, address: address.fullAddress }))
-    // Clear address error when address is selected
-    if (errors.address) {
-      setErrors(prev => ({ ...prev, address: '' }))
+  // Close address dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (addressContainerRef.current && !addressContainerRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
     }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (!MAPBOX_TOKEN || query.length < 1) { setSuggestions([]); return }
+    setAddressLoading(true)
+    try {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&types=address&limit=5&language=es`
+      const res = await fetch(url)
+      const data = await res.json()
+      setSuggestions(data.features ?? [])
+      setDropdownOpen(true)
+    } catch {
+      setSuggestions([])
+    } finally {
+      setAddressLoading(false)
+    }
+  }, [])
+
+  const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value
+    setAddressQuery(q)
+    if (!q.trim()) {
+      setFormData(prev => ({ ...prev, address: '' }))
+      setAddressDetails(null)
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (q.trim().length === 0) { setSuggestions([]); setDropdownOpen(false); return }
+    debounceRef.current = setTimeout(() => fetchSuggestions(q), 300)
   }
 
-  const handleImageSelect = (file: File, previewUrl: string) => {
-    setSelectedImage(file)
-    setImagePreviewUrl(previewUrl)
+  const handleAddressSelect = (feature: AddressSuggestion) => {
+    const details = parseFeature(feature)
+    setAddressQuery(feature.place_name)
+    setFormData(prev => ({ ...prev, address: feature.place_name }))
+    setAddressDetails(details)
+    setSuggestions([])
+    setDropdownOpen(false)
+    if (errors.address) setErrors(prev => ({ ...prev, address: '' }))
   }
 
-  const handleImageRemove = () => {
-    setSelectedImage(null)
-    setImagePreviewUrl(null)
+  const goTo = (newStep: number) => {
+    setDirection(newStep > step ? 'forward' : 'back')
+    setAnimKey(k => k + 1)
+    setErrors({})
+    setStep(newStep)
   }
+
+  const validateStep = (): boolean => {
+    const e: Record<string, string> = {}
+    if (step === 1) {
+      if (!formData.first_name.trim()) e.first_name = 'El nombre es requerido'
+      if (!formData.last_name.trim()) e.last_name = 'El apellido es requerido'
+    }
+    if (step === 2) {
+      if (!formData.email.trim()) e.email = 'El email es requerido'
+      else if (!/\S+@\S+\.\S+/.test(formData.email)) e.email = 'Email no válido'
+      if (!formData.phone.trim()) e.phone = 'El teléfono es requerido'
+    }
+    if (step === 3) {
+      if (!formData.password) e.password = 'La contraseña es requerida'
+      else if (formData.password.length < 6) e.password = 'Mínimo 6 caracteres'
+      if (!confirmPassword) e.confirmPassword = 'Confirma tu contraseña'
+      else if (formData.password !== confirmPassword) e.confirmPassword = 'No coinciden'
+    }
+    if (step === 4) {
+      if (!formData.business_name.trim()) e.business_name = 'El nombre es requerido'
+      else if (/[*&%^;[\]\\|<>{}]/.test(formData.business_name)) e.business_name = 'No se permiten los caracteres * & % ^ ; [ ] | < > { }'
+      else if (formData.business_name.trim().length < 3) e.business_name = 'Mínimo 3 caracteres'
+    }
+    if (step === 5) {
+      if (!formData.owner_name.trim()) e.owner_name = 'El nombre es requerido'
+      if (!formData.business_phone.trim()) e.business_phone = 'El teléfono es requerido'
+    }
+    if (step === 6) {
+      if (!formData.address.trim()) e.address = 'Selecciona una dirección de la lista'
+    }
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const next = () => { if (validateStep()) goTo(step + 1) }
+  const back = () => goTo(step - 1)
 
   const uploadBusinessImage = async (businessId: string): Promise<string | null> => {
     if (!selectedImage) return null
-
     setUploadingImage(true)
     try {
-      const formData = new FormData()
-      formData.append('file', selectedImage)
-      formData.append('businessId', businessId)
-
-      const response = await fetch('/api/upload/business-image', {
-        method: 'POST',
-        body: formData
-      })
-
+      const fd = new FormData()
+      fd.append('file', selectedImage)
+      fd.append('businessId', businessId)
+      const response = await fetch('/api/upload/business-image', { method: 'POST', body: fd })
       const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to upload image')
-      }
-
+      if (!response.ok) throw new Error(data.error)
       return data.url
-    } catch (error) {
-      console.error('Image upload error:', error)
-      throw error
+    } catch (err) {
+      console.error('Image upload error:', err)
+      throw err
     } finally {
       setUploadingImage(false)
     }
   }
 
-  const validateForm = (): boolean => {
-    const newErrors: Partial<BusinessAdminRegistrationForm & { confirmPassword: string }> = {}
-
-    // Personal info validation
-    if (!formData.first_name.trim()) newErrors.first_name = 'First name is required'
-    if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required'
-    if (!formData.email.trim()) newErrors.email = 'Email is required'
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email is invalid'
-    if (!formData.phone.trim()) newErrors.phone = 'Phone is required'
-    if (!formData.password) newErrors.password = 'Password is required'
-    else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters'
-    if (!confirmPassword) newErrors.confirmPassword = 'Please confirm your password'
-    else if (formData.password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match'
-
-    // Business info validation
-    if (!formData.business_name.trim()) newErrors.business_name = 'Business name is required'
-    if (!formData.owner_name.trim()) newErrors.owner_name = 'Owner name is required'
-    if (!formData.business_phone.trim()) newErrors.business_phone = 'Business phone is required'
-    if (!formData.address.trim()) newErrors.address = 'Address is required'
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!validateForm()) return
-
+  const handleSubmit = async () => {
     setIsSubmitting(true)
     try {
       const response = await fetch('/api/auth/register-business', {
@@ -136,18 +243,15 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
-          // Personal data
           first_name: formData.first_name,
           last_name: formData.last_name,
           email: formData.email,
           phone: formData.phone,
           password: formData.password,
-          // Business data
           business_name: formData.business_name,
           owner_name: formData.owner_name,
           business_phone: formData.business_phone,
           address: formData.address,
-          // Additional address details (if available)
           ...(addressDetails && {
             address_details: {
               place_id: addressDetails.placeId,
@@ -156,7 +260,7 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
               city: addressDetails.city,
               state: addressDetails.state,
               country: addressDetails.country,
-              postal_code: addressDetails.postalCode
+              postal_code: addressDetails.postalCode,
             }
           })
         })
@@ -166,23 +270,18 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
 
       if (!response.ok) {
         if (data.error === 'Email already exists') {
-          setErrors({ email: 'This email is already registered' })
-        } else if (data.error === 'Invalid or expired token') {
-          setErrors({ email: 'Registration token is invalid or expired' })
+          setErrors({ general: 'Este email ya está registrado' })
         } else {
-          setErrors({ email: data.error || 'Registration failed. Please try again.' })
+          setErrors({ general: data.error || 'Error al registrar. Inténtalo de nuevo.' })
         }
         return
       }
 
       if (data.success) {
-        // Upload business image if one was selected
         let imageUrl = null
         if (selectedImage) {
           try {
             imageUrl = await uploadBusinessImage(data.business.id)
-
-            // Update business with image URL
             if (imageUrl) {
               await fetch(`/api/businesses/${data.business.id}`, {
                 method: 'PUT',
@@ -196,229 +295,526 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
                 })
               })
             }
-          } catch (imageError) {
-            console.error('Image upload failed:', imageError)
-            // Continue with registration even if image upload fails
+          } catch {
+            // Continue even if image upload fails
           }
         }
-
         onSuccess({
           success: true,
-          message: 'Registration successful!',
+          message: 'Registro exitoso',
           user: data.user,
           business: { ...data.business, business_image_url: imageUrl || data.business.business_image_url }
         })
-      } else {
-        setErrors({ email: 'Registration failed. Please try again.' })
       }
-    } catch (error) {
-      console.error('Registration error:', error)
-      setErrors({ email: 'Registration failed. Please try again.' })
+    } catch (err) {
+      console.error('Registration error:', err)
+      setErrors({ general: 'Error al registrar. Inténtalo de nuevo.' })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  return (
-    <div className="min-h-screen p-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      <div className="absolute top-4 right-4">
-        <ClientThemeToggle />
-      </div>
-      <div className="mx-auto max-w-2xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Bienvenido a MyCard</h1>
-          <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>Configura tu cuenta de negocio para comenzar</p>
-        </div>
+  const inputStyle = (id: string, error?: string): React.CSSProperties => ({
+    border: `1.5px solid ${error ? '#FF3B30' : focusedField === id ? '#6366F1' : '#E5E5EA'}`,
+    color: '#1C1C1E',
+    backgroundColor: '#FAFAFA',
+  })
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Personal Information */}
-          <Card className="feature-card">
-            <CardHeader>
-              <CardTitle>Información Personal</CardTitle>
-              <CardDescription>
-                Tus datos de contacto y credenciales de acceso
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Nombre"
+  const slug = generateBusinessSlug(formData.business_name)
+
+  // ── Step content ────────────────────────────────────────────────────
+  const renderStepContent = () => {
+    switch (step) {
+
+      // Step 1 — Nombre
+      case 1:
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>¿Cómo te llamas?</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Tu nombre de contacto personal</p>
+            </div>
+            <div className="space-y-3 pt-2">
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>NOMBRE</label>
+                <input
+                  type="text"
                   value={formData.first_name}
-                  onChange={handleInputChange('first_name')}
-                  error={errors.first_name}
-                  required
+                  onChange={e => { setFormData(p => ({ ...p, first_name: e.target.value })); if (errors.first_name) setErrors(p => ({ ...p, first_name: '' })) }}
+                  onFocus={() => setFocusedField('first_name')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="Ana"
+                  autoFocus
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('first_name', errors.first_name)}
                 />
-                <Input
-                  label="Apellido"
-                  value={formData.last_name}
-                  onChange={handleInputChange('last_name')}
-                  error={errors.last_name}
-                  required
-                />
+                {errors.first_name && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.first_name}</p>}
               </div>
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>APELLIDO</label>
+                <input
+                  type="text"
+                  value={formData.last_name}
+                  onChange={e => { setFormData(p => ({ ...p, last_name: e.target.value })); if (errors.last_name) setErrors(p => ({ ...p, last_name: '' })) }}
+                  onFocus={() => setFocusedField('last_name')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="García"
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('last_name', errors.last_name)}
+                />
+                {errors.last_name && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.last_name}</p>}
+              </div>
+            </div>
+          </div>
+        )
 
-              <Input
-                label="Correo Electrónico"
-                type="email"
-                value={formData.email}
-                onChange={handleInputChange('email')}
-                error={errors.email}
-                helper="Este será usado para iniciar sesión"
-                required
-              />
+      // Step 2 — Contacto
+      case 2:
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>Tu contacto</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Para iniciar sesión y notificaciones</p>
+            </div>
+            <div className="space-y-3 pt-2">
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>EMAIL</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={e => { setFormData(p => ({ ...p, email: e.target.value })); if (errors.email) setErrors(p => ({ ...p, email: '' })) }}
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="ana@email.com"
+                  autoFocus
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('email', errors.email)}
+                />
+                {errors.email && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.email}</p>}
+              </div>
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>TELÉFONO</label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={e => { setFormData(p => ({ ...p, phone: e.target.value })); if (errors.phone) setErrors(p => ({ ...p, phone: '' })) }}
+                  onFocus={() => setFocusedField('phone')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="+1 (555) 000-0000"
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('phone', errors.phone)}
+                />
+                {errors.phone && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.phone}</p>}
+              </div>
+            </div>
+          </div>
+        )
 
-              <Input
-                label="Número de Teléfono"
-                type="tel"
-                value={formData.phone}
-                onChange={handleInputChange('phone')}
-                error={errors.phone}
-                required
-              />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Contraseña"
+      // Step 3 — Contraseña
+      case 3:
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>Crea tu contraseña</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Mínimo 6 caracteres</p>
+            </div>
+            <div className="space-y-3 pt-2">
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>CONTRASEÑA</label>
+                <input
                   type="password"
                   value={formData.password}
-                  onChange={handleInputChange('password')}
-                  error={errors.password}
-                  required
+                  onChange={e => { setFormData(p => ({ ...p, password: e.target.value })); if (errors.password) setErrors(p => ({ ...p, password: '' })) }}
+                  onFocus={() => setFocusedField('password')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="••••••••"
+                  autoFocus
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('password', errors.password)}
                 />
-                <Input
-                  label="Confirmar Contraseña"
+                {errors.password && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.password}</p>}
+              </div>
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>CONFIRMAR CONTRASEÑA</label>
+                <input
                   type="password"
                   value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value)
-                    if (errors.confirmPassword) {
-                      setErrors(prev => ({ ...prev, confirmPassword: '' }))
-                    }
-                  }}
-                  error={errors.confirmPassword}
-                  required
+                  onChange={e => { setConfirmPassword(e.target.value); if (errors.confirmPassword) setErrors(p => ({ ...p, confirmPassword: '' })) }}
+                  onFocus={() => setFocusedField('confirmPassword')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('confirmPassword', errors.confirmPassword)}
                 />
+                {errors.confirmPassword && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.confirmPassword}</p>}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        )
 
-          {/* Business Information */}
-          <Card className="feature-card">
-            <CardHeader>
-              <CardTitle>Información del Negocio</CardTitle>
-              <CardDescription>
-                Detalles sobre tu negocio
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input
-                label="Nombre del Negocio"
+      // Step 4 — Nombre del negocio + URL preview
+      case 4:
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>Nombre del negocio</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Así aparecerás ante tus clientes</p>
+            </div>
+            <div className="pt-2">
+              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>NOMBRE</label>
+              <input
+                type="text"
                 value={formData.business_name}
-                onChange={handleInputChange('business_name')}
-                error={errors.business_name}
-                required
+                onChange={e => {
+                  const val = e.target.value
+                  setFormData(p => ({ ...p, business_name: val }))
+                  if (/[*&%^;[\]\\|<>{}]/.test(val)) {
+                    setErrors(p => ({ ...p, business_name: 'No se permiten los caracteres * & % ^ ; [ ] | < > { }' }))
+                  } else if (val.trim().length > 0 && val.trim().length < 3) {
+                    setErrors(p => ({ ...p, business_name: 'Mínimo 3 caracteres' }))
+                  } else {
+                    setErrors(p => ({ ...p, business_name: '' }))
+                  }
+                }}
+                onFocus={() => setFocusedField('business_name')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="Peluquería María"
+                autoFocus
+                className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                style={inputStyle('business_name', errors.business_name)}
               />
+              {errors.business_name && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.business_name}</p>}
+            </div>
 
-              <Input
-                label="Nombre del Propietario"
-                value={formData.owner_name}
-                onChange={handleInputChange('owner_name')}
-                error={errors.owner_name}
-                helper="Puede ser diferente a tu nombre personal"
-                required
-              />
-
-              <Input
-                label="Teléfono del Negocio"
-                type="tel"
-                value={formData.business_phone}
-                onChange={handleInputChange('business_phone')}
-                error={errors.business_phone}
-                required
-              />
-
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
-                  Dirección del Negocio *
-                </label>
-                <AddressAutocomplete
-                  onAddressSelect={handleAddressSelect}
-                  placeholder="Comienza escribiendo la dirección de tu negocio..."
-                  initialValue={formData.address}
-                  disabled={isSubmitting}
-                  className="w-full"
-                />
-                {errors.address && (
-                  <p className="mt-1 text-sm text-red-400">{errors.address}</p>
-                )}
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  Busca y selecciona tu dirección exacta. Soportamos Estados Unidos y México.
+            {/* URL preview */}
+            <div className="rounded-2xl p-4" style={{ backgroundColor: slug ? '#EEF2FF' : '#F2F2F7' }}>
+              <p className="text-xs font-semibold mb-2" style={{ color: '#8E8E93' }}>TU ENLACE</p>
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-xs font-mono" style={{ color: '#8E8E93' }}>
+                  {origin || 'mycard.com'}/
+                </span>
+                <span
+                  className="text-sm font-bold font-mono px-2 py-0.5 rounded-lg"
+                  style={{
+                    backgroundColor: slug ? '#6366F1' : '#E5E5EA',
+                    color: slug ? '#FFFFFF' : '#C7C7CC',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  {slug || 'tu-negocio'}
+                </span>
+                <span className="text-xs font-mono" style={{ color: '#8E8E93' }}>/dashboard</span>
+              </div>
+              {slug && (
+                <p className="text-xs mt-2" style={{ color: '#6366F1' }}>
+                  Este será el link a tu panel de control
                 </p>
+              )}
+            </div>
+          </div>
+        )
 
-                {/* Selected Address Details */}
-                {addressDetails && addressDetails.fullAddress && (
-                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-start">
-                      <svg className="w-5 h-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-green-800">Dirección Confirmada</p>
-                        <p className="text-sm text-green-700">{addressDetails.fullAddress}</p>
-                        {(addressDetails.city || addressDetails.state) && (
-                          <p className="text-xs text-green-600 mt-1">
-                            {addressDetails.city && `${addressDetails.city}, `}
-                            {addressDetails.state && addressDetails.state}
-                            {addressDetails.postalCode && ` ${addressDetails.postalCode}`}
-                          </p>
-                        )}
-                      </div>
-                    </div>
+      // Step 5 — Propietario + Teléfono negocio
+      case 5:
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>Sobre el negocio</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Datos de contacto del negocio</p>
+            </div>
+            <div className="space-y-3 pt-2">
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>
+                  NOMBRE DEL PROPIETARIO
+                </label>
+                <input
+                  type="text"
+                  value={formData.owner_name}
+                  onChange={e => { setFormData(p => ({ ...p, owner_name: e.target.value })); if (errors.owner_name) setErrors(p => ({ ...p, owner_name: '' })) }}
+                  onFocus={() => setFocusedField('owner_name')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="Ana García"
+                  autoFocus
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('owner_name', errors.owner_name)}
+                />
+                {errors.owner_name && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.owner_name}</p>}
+                <p className="text-xs mt-1" style={{ color: '#8E8E93' }}>Pre-llenado con tu nombre — edítalo si es diferente</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>TELÉFONO DEL NEGOCIO</label>
+                <input
+                  type="tel"
+                  value={formData.business_phone}
+                  onChange={e => { setFormData(p => ({ ...p, business_phone: e.target.value })); if (errors.business_phone) setErrors(p => ({ ...p, business_phone: '' })) }}
+                  onFocus={() => setFocusedField('business_phone')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="+1 (555) 111-2222"
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('business_phone', errors.business_phone)}
+                />
+                {errors.business_phone && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.business_phone}</p>}
+              </div>
+            </div>
+          </div>
+        )
+
+      // Step 6 — Dirección + Mapa
+      case 6:
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>Ubicación</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>¿Dónde está tu negocio?</p>
+            </div>
+
+            {/* Address autocomplete */}
+            <div ref={addressContainerRef} className="relative">
+              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>DIRECCIÓN</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={addressQuery}
+                  onChange={handleAddressInput}
+                  onFocus={() => { setFocusedField('address'); if (suggestions.length > 0) setDropdownOpen(true) }}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="Busca tu dirección..."
+                  autoFocus
+                  autoComplete="off"
+                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
+                  style={inputStyle('address', errors.address)}
+                />
+                {addressLoading && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
+                      style={{ borderTopColor: '#6366F1', borderRightColor: '#6366F1' }} />
                   </div>
                 )}
               </div>
+              {errors.address && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.address}</p>}
 
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
-                  Logo del Negocio (Opcional)
-                </label>
-                <ImageUploader
-                  onImageSelect={handleImageSelect}
-                  onImageRemove={handleImageRemove}
-                  currentImageUrl={imagePreviewUrl || undefined}
-                  disabled={isSubmitting || uploadingImage}
-                  className="w-full"
+              {/* Suggestions dropdown */}
+              {dropdownOpen && suggestions.length > 0 && (
+                <ul className="absolute z-50 w-full mt-1 bg-white rounded-2xl overflow-hidden"
+                  style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #E5E5EA' }}>
+                  {suggestions.map((s, i) => (
+                    <li
+                      key={s.id}
+                      onMouseDown={() => handleAddressSelect(s)}
+                      className="px-4 py-3 cursor-pointer"
+                      style={{
+                        borderBottom: i < suggestions.length - 1 ? '1px solid #F2F2F7' : 'none',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F2F2F7')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      <p className="text-sm font-semibold" style={{ color: '#1C1C1E' }}>
+                        {s.address ? `${s.address} ${s.text}` : s.text}
+                      </p>
+                      <p className="text-xs mt-0.5 truncate" style={{ color: '#8E8E93' }}>{s.place_name}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Map preview */}
+            {formData.address && (
+              <div className="rounded-2xl overflow-hidden" style={{ height: 200 }}>
+                <MapboxMap
+                  address={formData.address}
+                  businessName={formData.business_name || 'Tu negocio'}
+                  className="w-full h-full"
                 />
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  Sube una imagen que represente tu negocio. Recomendado: 800x800px, máximo 5MB.
-                </p>
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
+        )
 
-          {/* Submit Button */}
-          <Card className="feature-card">
-            <CardContent className="pt-6">
-              <Button
-                type="submit"
-                loading={isSubmitting || uploadingImage}
+      // Step 7 — Logo
+      case 7:
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>Logo del negocio</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Opcional — puedes agregarlo después</p>
+            </div>
+            <div className="pt-2">
+              <ImageUploader
+                onImageSelect={(file, url) => { setSelectedImage(file); setImagePreviewUrl(url) }}
+                onImageRemove={() => { setSelectedImage(null); setImagePreviewUrl(null) }}
+                currentImageUrl={imagePreviewUrl || undefined}
+                disabled={isSubmitting}
                 className="w-full"
-                size="lg"
-              >
-                {uploadingImage
-                  ? 'Subiendo imagen...'
-                  : isSubmitting
-                  ? 'Creando Cuenta...'
-                  : 'Crear Cuenta de Negocio'
-                }
-              </Button>
+              />
+              <p className="text-xs mt-2" style={{ color: '#8E8E93' }}>Recomendado: 800×800px, máx 5MB</p>
+            </div>
+          </div>
+        )
 
-              <p className="mt-4 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Al crear una cuenta, aceptas nuestros términos de servicio y política de privacidad.
-              </p>
-            </CardContent>
-          </Card>
+      // Step 8 — Resumen
+      case 8: {
+        const businessInitial = formData.business_name.charAt(0).toUpperCase()
+        return (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold" style={{ color: '#1C1C1E' }}>Todo listo</h2>
+              <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Revisa tu información antes de crear la cuenta</p>
+            </div>
+
+            {errors.general && (
+              <div className="rounded-xl p-3" style={{ backgroundColor: '#FFF1F0', border: '1px solid #FFCDD2' }}>
+                <p className="text-sm" style={{ color: '#FF3B30' }}>{errors.general}</p>
+              </div>
+            )}
+
+            {/* Summary card */}
+            <div className="bg-white rounded-2xl p-5 space-y-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+              {/* Business identity */}
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center"
+                  style={{ backgroundColor: '#6366F1' }}>
+                  {imagePreviewUrl ? (
+                    <Image src={imagePreviewUrl} alt="logo" width={56} height={56} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xl font-bold text-white">{businessInitial || '?'}</span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-base font-bold truncate" style={{ color: '#1C1C1E' }}>{formData.business_name}</p>
+                  <p className="text-xs truncate font-mono" style={{ color: '#6366F1' }}>
+                    /{slug}/dashboard
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ height: 1, backgroundColor: '#F2F2F7' }} />
+
+              {/* Info rows */}
+              {[
+                { label: 'Nombre', value: `${formData.first_name} ${formData.last_name}` },
+                { label: 'Email', value: formData.email },
+                { label: 'Teléfono', value: formData.phone },
+                { label: 'Propietario', value: formData.owner_name },
+                { label: 'Tel. negocio', value: formData.business_phone },
+                { label: 'Dirección', value: formData.address, truncate: true },
+              ].map(row => (
+                <div key={row.label} className="flex items-start justify-between gap-3">
+                  <p className="text-xs font-semibold flex-shrink-0" style={{ color: '#8E8E93' }}>{row.label}</p>
+                  <p className={`text-xs text-right font-medium ${row.truncate ? 'truncate' : ''}`}
+                    style={{ color: '#1C1C1E', maxWidth: '65%' }}>
+                    {row.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      }
+
+      default:
+        return null
+    }
+  }
+
+  const isLastStep = step === TOTAL_STEPS
+  const isLoading = isSubmitting || uploadingImage
+
+  return (
+    <div className="min-h-screen font-poppins" style={{ backgroundColor: '#F2F2F7' }}>
+
+      {/* Progress bar */}
+      <div className="fixed top-0 left-0 right-0 z-50" style={{ height: 3, backgroundColor: '#E5E5EA' }}>
+        <div style={{
+          height: '100%',
+          width: `${(step / TOTAL_STEPS) * 100}%`,
+          backgroundColor: '#6366F1',
+          transition: 'width 0.3s ease',
+        }} />
+      </div>
+
+      <div className="px-5 pt-12 pb-12 max-w-sm mx-auto">
+
+        {/* Top nav */}
+        <div className="flex items-center justify-between mb-8">
+          <button
+            type="button"
+            onClick={back}
+            className="flex items-center gap-1 text-sm font-medium"
+            style={{
+              color: step > 1 ? '#6366F1' : 'transparent',
+              pointerEvents: step > 1 ? 'auto' : 'none',
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+            </svg>
+            Atrás
+          </button>
+
+          <p className="text-xs font-semibold" style={{ color: '#C7C7CC' }}>
+            {step} / {TOTAL_STEPS}
+          </p>
+
+          {/* Step dots */}
+          <div className="flex items-center gap-1">
+            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: i + 1 === step ? 16 : 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: i + 1 <= step ? '#6366F1' : '#E5E5EA',
+                  transition: 'all 0.2s ease',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Animated step content + submit wrapped in form for Enter key support */}
+        <form
+          onSubmit={e => { e.preventDefault(); isLastStep ? handleSubmit() : next() }}
+        >
+          <div
+            key={animKey}
+            className={direction === 'forward' ? 'step-forward' : 'step-back'}
+          >
+            {renderStepContent()}
+          </div>
+
+          <div className="mt-8">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-4 rounded-[14px] text-sm font-semibold text-white transition-all active:scale-[0.98]"
+              style={{
+                backgroundColor: isLoading ? '#A5B4FC' : '#6366F1',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
+                    style={{ borderTopColor: 'white', borderRightColor: 'white' }} />
+                  {uploadingImage ? 'Subiendo logo...' : 'Creando cuenta...'}
+                </span>
+              ) : isLastStep ? 'Crear cuenta' : 'Siguiente'}
+            </button>
+
+            {/* Skip on logo step */}
+            {step === 7 && !selectedImage && (
+              <button
+                type="button"
+                onClick={next}
+                className="w-full mt-3 py-3 text-sm font-semibold"
+                style={{ color: '#8E8E93' }}
+              >
+                Omitir por ahora
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>

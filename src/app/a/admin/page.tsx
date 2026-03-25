@@ -1,11 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
-import { ClientThemeToggle } from '@/components/ui/ClientThemeToggle'
+import Link from 'next/link'
 import { SuperUserLoginForm } from '@/components/forms/SuperUserLoginForm'
+import { generateBusinessSlug } from '@/utils/slug'
 import { User, Business } from '@/types'
 
 interface RecentAppointment {
@@ -13,13 +11,8 @@ interface RecentAppointment {
   appointment_date: string
   appointment_time: string
   status: string
-  users?: {
-    first_name?: string
-    last_name?: string
-  }
-  services?: {
-    name?: string
-  }
+  users?: { first_name?: string; last_name?: string }
+  services?: { name?: string }
 }
 
 interface BusinessWithStats extends Business {
@@ -44,7 +37,6 @@ interface DemoRequest {
 }
 
 export default function AdminDashboard() {
-  // ALL HOOKS MUST BE AT THE TOP - BEFORE ANY CONDITIONAL RETURNS
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -56,19 +48,23 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<{ activeBusinesses: number; totalClients: number; activeTokens: number; totalAppointments: number } | null>(null)
   const [loadingData, setLoadingData] = useState(false)
   const [generatedTokens, setGeneratedTokens] = useState<string[]>([])
-  const [showBusinesses, setShowBusinesses] = useState(false)
   const [selectedBusinessDetails, setSelectedBusinessDetails] = useState<BusinessWithStats | null>(null)
   const [loadingBusinessDetails, setLoadingBusinessDetails] = useState(false)
   const [demoRequests, setDemoRequests] = useState<DemoRequest[]>([])
   const [loadingDemoRequests, setLoadingDemoRequests] = useState(false)
   const [showDemoRequests, setShowDemoRequests] = useState(false)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [origin, setOrigin] = useState('')
+
+  useEffect(() => {
+    setOrigin(window.location.origin)
+  }, [])
 
   const checkAuth = useCallback(() => {
     const savedUser = localStorage.getItem('superuser')
     if (savedUser) {
       try {
         const userData = JSON.parse(savedUser)
-        // Verify the user has a valid UUID
         if (userData.id && userData.id.length === 36) {
           setUser(userData)
           setIsAuthenticated(true)
@@ -86,33 +82,42 @@ export default function AdminDashboard() {
     checkAuth()
   }, [checkAuth])
 
+  const loadAdminData = useCallback(async () => {
+    setLoadingData(true)
+    try {
+      const [businessesResponse, statsResponse] = await Promise.all([
+        fetch('/api/admin/businesses'),
+        fetch('/api/admin/stats')
+      ])
+      if (businessesResponse.ok) {
+        const d = await businessesResponse.json()
+        if (d.success) setBusinesses(d.businesses)
+      }
+      if (statsResponse.ok) {
+        const d = await statsResponse.json()
+        if (d.success) setStats(d.stats)
+      }
+    } catch (error) {
+      console.error('Error loading admin data:', error)
+    } finally {
+      setLoadingData(false)
+    }
+  }, [])
+
   const loadDemoRequests = useCallback(async () => {
     setLoadingDemoRequests(true)
     try {
-      // Get superuser session for authentication
       const savedUser = localStorage.getItem('superuser')
-      if (!savedUser) {
-        console.error('No superuser session found')
-        return
-      }
-
+      if (!savedUser) return
       const response = await fetch('/api/demo-requests', {
-        headers: {
-          'x-superuser-session': savedUser,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'x-superuser-session': savedUser, 'Content-Type': 'application/json' }
       })
       const result = await response.json()
-
       if (result.success) {
         setDemoRequests(result.data)
-      } else {
-        console.error('Error loading demo requests:', result.error)
-        if (response.status === 401) {
-          // Unauthorized - redirect to login
-          setIsAuthenticated(false)
-          localStorage.removeItem('superuser')
-        }
+      } else if (response.status === 401) {
+        setIsAuthenticated(false)
+        localStorage.removeItem('superuser')
       }
     } catch (error) {
       console.error('Error loading demo requests:', error)
@@ -121,42 +126,30 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadAdminData()
+      loadDemoRequests()
+    }
+  }, [isAuthenticated, loadAdminData, loadDemoRequests])
+
   const updateDemoRequestStatus = async (id: string, status: string) => {
     try {
-      // Get superuser session for authentication
       const savedUser = localStorage.getItem('superuser')
-      if (!savedUser) {
-        console.error('No superuser session found')
-        return
-      }
-
+      if (!savedUser) return
       const response = await fetch('/api/demo-requests', {
         method: 'PATCH',
-        headers: {
-          'x-superuser-session': savedUser,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'x-superuser-session': savedUser, 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status }),
       })
-
       const result = await response.json()
-
       if (result.success) {
-        // Update the local state
         setDemoRequests(prev =>
-          prev.map(request =>
-            request.id === id
-              ? { ...request, status: status as DemoRequest['status'] }
-              : request
-          )
+          prev.map(r => r.id === id ? { ...r, status: status as DemoRequest['status'] } : r)
         )
-      } else {
-        console.error('Error updating demo request:', result.error)
-        if (response.status === 401) {
-          // Unauthorized - redirect to login
-          setIsAuthenticated(false)
-          localStorage.removeItem('superuser')
-        }
+      } else if (response.status === 401) {
+        setIsAuthenticated(false)
+        localStorage.removeItem('superuser')
       }
     } catch (error) {
       console.error('Error updating demo request:', error)
@@ -167,38 +160,6 @@ export default function AdminDashboard() {
     setUser(userData)
     setIsAuthenticated(true)
     localStorage.setItem('superuser', JSON.stringify(userData))
-    // Load data after successful login
-    loadAdminData()
-    loadDemoRequests()
-  }
-
-  const loadAdminData = async () => {
-    setLoadingData(true)
-    try {
-      // Load businesses and stats in parallel
-      const [businessesResponse, statsResponse] = await Promise.all([
-        fetch('/api/admin/businesses'),
-        fetch('/api/admin/stats')
-      ])
-
-      if (businessesResponse.ok) {
-        const businessesData = await businessesResponse.json()
-        if (businessesData.success) {
-          setBusinesses(businessesData.businesses)
-        }
-      }
-
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json()
-        if (statsData.success) {
-          setStats(statsData.stats)
-        }
-      }
-    } catch (error) {
-      console.error('Error loading admin data:', error)
-    } finally {
-      setLoadingData(false)
-    }
   }
 
   const handleLogout = () => {
@@ -207,11 +168,80 @@ export default function AdminDashboard() {
     localStorage.removeItem('superuser')
   }
 
-  // CONDITIONAL RETURNS AFTER ALL HOOKS
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedKey(key)
+    setTimeout(() => setCopiedKey(null), 1500)
+  }
+
+  const generateBusinessToken = async () => {
+    if (!user?.id) return
+    setIsGenerating(true)
+    try {
+      const response = await fetch('/api/tokens/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'business_admin', createdBy: user.id, expiresInDays: 30 })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setBusinessToken(data.token)
+        loadAdminData()
+      }
+    } catch (error) {
+      console.error('Error generating token:', error)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const generateClientTokens = async () => {
+    if (!selectedBusiness || !user?.id) return
+    if (tokenQuantity < 1 || tokenQuantity > 50) return
+    setIsGenerating(true)
+    const tokens: string[] = []
+    try {
+      for (let i = 0; i < tokenQuantity; i++) {
+        const response = await fetch('/api/tokens/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'final_client', createdBy: user.id, businessId: selectedBusiness })
+        })
+        const data = await response.json()
+        if (data.success) {
+          tokens.push(data.token)
+        } else break
+      }
+      if (tokens.length > 0) {
+        setGeneratedTokens(tokens)
+        loadAdminData()
+      }
+    } catch (error) {
+      console.error('Error generating tokens:', error)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const loadBusinessDetails = async (businessId: string) => {
+    setLoadingBusinessDetails(true)
+    try {
+      const response = await fetch(`/api/admin/businesses/${businessId}`)
+      const data = await response.json()
+      if (data.success) setSelectedBusinessDetails(data.business)
+    } catch (error) {
+      console.error('Error loading business details:', error)
+    } finally {
+      setLoadingBusinessDetails(false)
+    }
+  }
+
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+      <div className="min-h-screen flex items-center justify-center font-poppins"
+        style={{ backgroundColor: '#F2F2F7' }}>
+        <div className="w-10 h-10 rounded-full border-[3px] border-transparent animate-spin"
+          style={{ borderTopColor: '#6366F1', borderRightColor: '#6366F1' }} />
       </div>
     )
   }
@@ -220,822 +250,500 @@ export default function AdminDashboard() {
     return <SuperUserLoginForm onSuccess={handleLoginSuccess} />
   }
 
-  // Load data if authenticated but not yet loaded
-  if (isAuthenticated && businesses.length === 0 && !loadingData && !stats) {
-    loadAdminData()
+  const pendingCount = demoRequests.filter(r => r.status === 'pending').length
+
+  const statusBadge = (status: DemoRequest['status']) => {
+    const map = {
+      pending:   { label: 'Pendiente',  style: { backgroundColor: '#FFFBEB', color: '#F59E0B' } },
+      contacted: { label: 'Contactado', style: { backgroundColor: '#EFF6FF', color: '#3B82F6' } },
+      completed: { label: 'Completado', style: { backgroundColor: '#F0FFF4', color: '#34C759' } },
+      declined:  { label: 'Rechazado',  style: { backgroundColor: '#FFF1F0', color: '#FF3B30' } },
+    }
+    const b = map[status] ?? map.pending
+    return (
+      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={b.style}>{b.label}</span>
+    )
   }
 
-  const generateBusinessToken = async () => {
-    if (!user?.id) {
-      alert('User not authenticated')
-      return
+  const apptStatusBadge = (status: string) => {
+    const map: Record<string, { label: string; style: React.CSSProperties }> = {
+      confirmed: { label: 'Confirmada', style: { backgroundColor: '#EEF2FF', color: '#6366F1' } },
+      pending:   { label: 'Pendiente',  style: { backgroundColor: '#FFFBEB', color: '#F59E0B' } },
+      completed: { label: 'Completada', style: { backgroundColor: '#F0FFF4', color: '#34C759' } },
+      cancelled: { label: 'Cancelada',  style: { backgroundColor: '#FFF1F0', color: '#FF3B30' } },
     }
-
-    setIsGenerating(true)
-    try {
-      const response = await fetch('/api/tokens/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'business_admin',
-          createdBy: user.id,
-          expiresInDays: 30 // Token expires in 30 days
-        })
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        setBusinessToken(data.token)
-        // Refresh stats after generating token
-        loadAdminData()
-      } else {
-        alert('Failed to generate token: ' + data.error)
-      }
-    } catch (error) {
-      console.error('Error generating token:', error)
-      alert('Failed to generate token')
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  const generateClientTokens = async () => {
-    if (!selectedBusiness) {
-      alert('Please select a business first')
-      return
-    }
-
-    if (tokenQuantity < 1 || tokenQuantity > 50) {
-      alert('Please enter a quantity between 1 and 50')
-      return
-    }
-
-    if (!user?.id) {
-      alert('User not authenticated')
-      return
-    }
-
-    setIsGenerating(true)
-    const tokens: string[] = []
-
-    try {
-      // Generate tokens one by one
-      for (let i = 0; i < tokenQuantity; i++) {
-        const response = await fetch('/api/tokens/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'final_client',
-            createdBy: user.id,
-            businessId: selectedBusiness
-          })
-        })
-
-        const data = await response.json()
-
-        if (data.success) {
-          tokens.push(data.token)
-        } else {
-          console.error(`Failed to generate token ${i + 1}:`, data.error)
-          break
-        }
-      }
-
-      if (tokens.length > 0) {
-        setGeneratedTokens(tokens)
-        alert(`✅ Successfully generated ${tokens.length} client token(s)`)
-        // Refresh stats
-        loadAdminData()
-      } else {
-        alert('❌ Failed to generate any tokens')
-      }
-    } catch (error) {
-      console.error('Error generating tokens:', error)
-      alert('❌ Failed to generate tokens')
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  const copyToClipboard = (text: string, type: string) => {
-    navigator.clipboard.writeText(text)
-    alert(`${type} copied to clipboard!`)
-  }
-
-
-
-  const loadBusinessDetails = async (businessId: string) => {
-    setLoadingBusinessDetails(true)
-    try {
-      const response = await fetch(`/api/admin/businesses/${businessId}`)
-      const data = await response.json()
-
-      if (data.success) {
-        setSelectedBusinessDetails(data.business)
-      } else {
-        alert('❌ Failed to load business details: ' + data.error)
-      }
-    } catch (error) {
-      console.error('Error loading business details:', error)
-      alert('❌ Failed to load business details')
-    } finally {
-      setLoadingBusinessDetails(false)
-    }
+    const b = map[status] ?? { label: status, style: { backgroundColor: '#F2F2F7', color: '#8E8E93' } }
+    return <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={b.style}>{b.label}</span>
   }
 
   return (
-    <div className="min-h-screen p-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      <div className="mx-auto max-w-4xl space-y-6">
+    <div className="min-h-screen font-poppins screen-enter" style={{ backgroundColor: '#F2F2F7' }}>
+      <div className="px-4 pt-6 pb-10 max-w-lg mx-auto space-y-4">
+
         {/* Header */}
-        <div className="flex items-center justify-between p-6 rounded-xl feature-card">
-          <div className="text-center flex-1">
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>MyCard Admin</h1>
-            <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>Generate invitation tokens for businesses and clients</p>
-            <p className="text-sm mt-1 spotify-green-text">Welcome, {user?.first_name}!</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold" style={{ color: '#1C1C1E' }}>myCard Admin</h1>
+            <p className="text-sm mt-0.5" style={{ color: '#8E8E93' }}>Bienvenido, {user?.first_name}!</p>
           </div>
-          <div className="flex items-center gap-4">
-            <ClientThemeToggle />
-            <Button
-              onClick={handleLogout}
-              variant="outline"
-              size="sm"
-            >
-              Logout
-            </Button>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="text-xs font-semibold px-3 py-1.5 rounded-[10px]"
+            style={{ color: '#8E8E93', backgroundColor: '#FFFFFF', border: '1px solid #E5E5EA' }}
+          >
+            Salir
+          </button>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Business Admin Token Generation */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                🏢 Business Admin Token
-              </CardTitle>
-              <CardDescription>
-                Generate invitation tokens for new business administrators
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button
-                onClick={generateBusinessToken}
-                loading={isGenerating}
-                className="w-full"
-                size="lg"
-              >
-                Generate Business Token
-              </Button>
-
-              {businessToken && (
-                <div className="space-y-3">
-                  <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Token:</p>
-                    <p className="break-all font-mono text-sm" style={{ color: 'var(--text-primary)' }}>{businessToken}</p>
-                  </div>
-
-                  <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid #1DB954' }}>
-                    <p className="text-sm font-medium spotify-green-text">Invitation URL:</p>
-                    <p className="break-all text-sm" style={{ color: 'var(--text-primary)' }}>
-                      {window.location.origin}/a/{businessToken}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 transition-all duration-300 hover:border-green-500"
-                      onClick={() => copyToClipboard(businessToken, 'Token')}
-                    >
-                      Copy Token
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 transition-all duration-300 hover:border-green-500"
-                      onClick={() => copyToClipboard(`${window.location.origin}/a/${businessToken}`, 'URL')}
-                    >
-                      Copy URL
-                    </Button>
-                  </div>
+        {/* Stats 2x2 */}
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            {
+              key: 'activeBusinesses',
+              label: 'Negocios Activos',
+              value: stats?.activeBusinesses ?? 0,
+              iconBg: '#EEF2FF', iconColor: '#6366F1',
+              icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            },
+            {
+              key: 'totalClients',
+              label: 'Total Clientes',
+              value: stats?.totalClients ?? 0,
+              iconBg: '#F0FFF4', iconColor: '#34C759',
+              icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            },
+            {
+              key: 'activeTokens',
+              label: 'Tokens Activos',
+              value: stats?.activeTokens ?? 0,
+              iconBg: '#F5F3FF', iconColor: '#8B5CF6',
+              icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            },
+            {
+              key: 'totalAppointments',
+              label: 'Total Citas',
+              value: stats?.totalAppointments ?? 0,
+              iconBg: '#FFFBEB', iconColor: '#F59E0B',
+              icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            },
+          ].map(stat => (
+            <div key={stat.key} className="bg-white rounded-2xl p-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+              {loadingData ? (
+                <div className="animate-pulse space-y-2">
+                  <div className="w-8 h-8 rounded-xl" style={{ backgroundColor: '#F2F2F7' }} />
+                  <div className="h-6 w-10 rounded" style={{ backgroundColor: '#F2F2F7' }} />
+                  <div className="h-3 w-20 rounded" style={{ backgroundColor: '#F2F2F7' }} />
                 </div>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2"
+                    style={{ backgroundColor: stat.iconBg }}>
+                    <svg className="w-4 h-4" style={{ color: stat.iconColor }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {stat.icon}
+                    </svg>
+                  </div>
+                  <p className="text-xl font-bold" style={{ color: '#1C1C1E' }}>{stat.value}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#8E8E93' }}>{stat.label}</p>
+                </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          ))}
+        </div>
 
-          {/* Final Client Token Generation */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                👤 Client Token
-              </CardTitle>
-              <CardDescription>
-                Generate NFC tokens for final clients (linked to a business)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Business Selection */}
+        {/* Token de Negocio */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+          <p className="text-sm font-bold mb-0.5" style={{ color: '#1C1C1E' }}>Token de Negocio</p>
+          <p className="text-xs mb-4" style={{ color: '#8E8E93' }}>Genera invitaciones para nuevos negocios</p>
+
+          <button
+            onClick={generateBusinessToken}
+            disabled={isGenerating}
+            className="w-full py-3 rounded-[14px] text-sm font-semibold text-white"
+            style={{ backgroundColor: isGenerating ? '#A5B4FC' : '#6366F1', cursor: isGenerating ? 'not-allowed' : 'pointer' }}
+          >
+            {isGenerating ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
+                  style={{ borderTopColor: 'white', borderRightColor: 'white' }} />
+                Generando...
+              </span>
+            ) : 'Generar token'}
+          </button>
+
+          {businessToken && (
+            <div className="mt-4 space-y-3">
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  Select Business *
-                </label>
-                {loadingData ? (
-                  <div className="animate-pulse">
-                    <div className="h-10 rounded" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                  </div>
-                ) : businesses.length > 0 ? (
-                  <select
-                    value={selectedBusiness}
-                    onChange={(e) => setSelectedBusiness(e.target.value)}
-                    className="w-full rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
-                    style={{ 
-                      backgroundColor: 'var(--bg-secondary)', 
-                      color: 'var(--text-primary)',
-                      border: '1px solid var(--border-color)'
-                    }}
-                  >
-                    <option value="">Choose a business...</option>
-                    {businesses.map((business) => (
-                      <option key={business.id} value={business.id}>
-                        {business.business_name} - {business.owner_name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="rounded-md px-3 py-2" style={{ 
-                    backgroundColor: 'var(--bg-secondary)',
-                    color: 'var(--text-muted)',
-                    border: '1px solid var(--border-color)'
-                  }}>
-                    No businesses registered yet
-                  </div>
-                )}
-              </div>
-
-              {/* Quantity Selection */}
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Quantity"
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={tokenQuantity.toString()}
-                  onChange={(e) => setTokenQuantity(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
-                  helper="1-50 tokens"
-                />
-                <div className="flex items-end">
-                  <Button
-                    onClick={generateClientTokens}
-                    loading={isGenerating}
-                    className="w-full"
-                    size="lg"
-                    disabled={!selectedBusiness || tokenQuantity < 1}
-                  >
-                    Generate {tokenQuantity} Token{tokenQuantity !== 1 ? 's' : ''}
-                  </Button>
+                <p className="text-xs font-semibold mb-1" style={{ color: '#8E8E93' }}>TOKEN</p>
+                <div className="px-3 py-2.5 rounded-xl font-mono text-xs break-all" style={{ backgroundColor: '#F2F2F7', color: '#1C1C1E' }}>
+                  {businessToken}
                 </div>
               </div>
-
-              {/* Generated Tokens Display */}
-              {generatedTokens.length > 0 && (
-                <div className="space-y-3">
-                  <div className="rounded-lg p-4 feature-card" style={{ border: '1px solid #1DB954' }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold spotify-green-text">
-                        ✅ Generated {generatedTokens.length} Client Token{generatedTokens.length !== 1 ? 's' : ''}
-                      </h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setGeneratedTokens([])}
-                        className="transition-all duration-300 hover:border-green-500"
-                      >
-                        Clear
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {generatedTokens.map((token, index) => (
-                        <div key={token} className="rounded p-3 feature-card">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                              Token #{index + 1}
-                            </span>
-                            <div className="flex gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-xs h-6 px-2 transition-all duration-300 hover:border-green-500"
-                                onClick={() => copyToClipboard(token, `Token #${index + 1}`)}
-                              >
-                                Copy Token
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-xs h-6 px-2 transition-all duration-300 hover:border-green-500"
-                                onClick={() => copyToClipboard(`${window.location.origin}/c/${token}`, `URL #${index + 1}`)}
-                              >
-                                Copy URL
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <div>
-                              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Token:</p>
-                              <p className="break-all font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{token}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>NFC URL:</p>
-                              <p className="break-all text-xs spotify-green-text">
-                                {window.location.origin}/c/{token}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-3 p-3 rounded" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid #f59e0b' }}>
-                      <p className="text-xs text-center" style={{ color: '#f59e0b' }}>
-                        💡 Program these URLs into NFC cards/tags for your clients
-                      </p>
-                    </div>
-
-                    <div className="mt-3 flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 transition-all duration-300 hover:border-green-500"
-                        onClick={() => copyToClipboard(generatedTokens.join('\n'), 'All Tokens')}
-                      >
-                        Copy All Tokens
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 transition-all duration-300 hover:border-green-500"
-                        onClick={() => copyToClipboard(
-                          generatedTokens.map(token => `${window.location.origin}/c/${token}`).join('\n'),
-                          'All URLs'
-                        )}
-                      >
-                        Copy All URLs
-                      </Button>
-                    </div>
-                  </div>
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: '#8E8E93' }}>URL DE INVITACIÓN</p>
+                <div className="px-3 py-2.5 rounded-xl text-xs break-all" style={{ backgroundColor: '#F2F2F7', color: '#6366F1' }}>
+                  {origin}/a/{businessToken}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => copyToClipboard(businessToken, 'biz-token')}
+                  className="flex-1 py-2.5 rounded-[10px] text-xs font-semibold"
+                  style={{ border: '1.5px solid #E5E5EA', color: copiedKey === 'biz-token' ? '#34C759' : '#6366F1', backgroundColor: '#FFFFFF' }}
+                >
+                  {copiedKey === 'biz-token' ? '¡Copiado!' : 'Copiar token'}
+                </button>
+                <button
+                  onClick={() => copyToClipboard(`${origin}/a/${businessToken}`, 'biz-url')}
+                  className="flex-1 py-2.5 rounded-[10px] text-xs font-semibold"
+                  style={{ border: '1.5px solid #E5E5EA', color: copiedKey === 'biz-url' ? '#34C759' : '#6366F1', backgroundColor: '#FFFFFF' }}
+                >
+                  {copiedKey === 'biz-url' ? '¡Copiado!' : 'Copiar URL'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Demo Requests Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                📧 Solicitudes de Demo
-                {demoRequests.filter(req => req.status === 'pending').length > 0 && (
-                  <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                    {demoRequests.filter(req => req.status === 'pending').length}
-                  </span>
-                )}
+        {/* Tokens de Cliente */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+          <p className="text-sm font-bold mb-0.5" style={{ color: '#1C1C1E' }}>Tokens de Cliente</p>
+          <p className="text-xs mb-4" style={{ color: '#8E8E93' }}>Genera tokens NFC vinculados a un negocio</p>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>NEGOCIO</label>
+              {loadingData ? (
+                <div className="h-11 rounded-xl animate-pulse" style={{ backgroundColor: '#F2F2F7' }} />
+              ) : (
+                <select
+                  value={selectedBusiness}
+                  onChange={(e) => setSelectedBusiness(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl text-sm font-medium outline-none"
+                  style={{ border: '1.5px solid #E5E5EA', color: '#1C1C1E', backgroundColor: '#FAFAFA' }}
+                >
+                  <option value="">Selecciona un negocio...</option>
+                  {businesses.map(b => (
+                    <option key={b.id} value={b.id}>{b.business_name} — {b.owner_name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>CANTIDAD (1-50)</label>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={tokenQuantity}
+                onChange={(e) => setTokenQuantity(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                className="w-full px-4 py-3 rounded-xl text-sm font-medium outline-none"
+                style={{ border: '1.5px solid #E5E5EA', color: '#1C1C1E', backgroundColor: '#FAFAFA' }}
+              />
+            </div>
+
+            <button
+              onClick={generateClientTokens}
+              disabled={isGenerating || !selectedBusiness}
+              className="w-full py-3 rounded-[14px] text-sm font-semibold text-white"
+              style={{
+                backgroundColor: isGenerating || !selectedBusiness ? '#A5B4FC' : '#6366F1',
+                cursor: isGenerating || !selectedBusiness ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isGenerating ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
+                    style={{ borderTopColor: 'white', borderRightColor: 'white' }} />
+                  Generando...
+                </span>
+              ) : `Generar ${tokenQuantity} token${tokenQuantity !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+
+          {generatedTokens.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold" style={{ color: '#34C759' }}>
+                  ✓ {generatedTokens.length} token{generatedTokens.length !== 1 ? 's' : ''} generado{generatedTokens.length !== 1 ? 's' : ''}
+                </p>
+                <button onClick={() => setGeneratedTokens([])}
+                  className="text-xs font-semibold px-2 py-1 rounded-lg"
+                  style={{ backgroundColor: '#F2F2F7', color: '#8E8E93' }}>
+                  Limpiar
+                </button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setShowDemoRequests(!showDemoRequests)
-                  if (!showDemoRequests && demoRequests.length === 0) {
-                    loadDemoRequests()
-                  }
-                }}
-                loading={loadingDemoRequests}
-              >
-                {showDemoRequests ? 'Ocultar' : 'Ver Solicitudes'}
-              </Button>
-            </CardTitle>
-            <CardDescription>
-              Gestiona las solicitudes de demo del landing page
-            </CardDescription>
-          </CardHeader>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {generatedTokens.map((token, index) => (
+                  <div key={token} className="rounded-xl p-3" style={{ backgroundColor: '#F2F2F7' }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-semibold" style={{ color: '#8E8E93' }}>Token #{index + 1}</span>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => copyToClipboard(token, `ct-${index}`)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg bg-white"
+                          style={{ color: copiedKey === `ct-${index}` ? '#34C759' : '#6366F1', border: '1px solid #E5E5EA' }}
+                        >
+                          {copiedKey === `ct-${index}` ? '¡Copiado!' : 'Token'}
+                        </button>
+                        <button
+                          onClick={() => copyToClipboard(`${origin}/c/${token}`, `cu-${index}`)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg bg-white"
+                          style={{ color: copiedKey === `cu-${index}` ? '#34C759' : '#6366F1', border: '1px solid #E5E5EA' }}
+                        >
+                          {copiedKey === `cu-${index}` ? '¡Copiado!' : 'URL'}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="font-mono text-xs break-all" style={{ color: '#1C1C1E' }}>{token}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => copyToClipboard(generatedTokens.join('\n'), 'all-tokens')}
+                  className="flex-1 py-2.5 rounded-[10px] text-xs font-semibold"
+                  style={{ border: '1.5px solid #E5E5EA', color: copiedKey === 'all-tokens' ? '#34C759' : '#6366F1', backgroundColor: '#FFFFFF' }}
+                >
+                  {copiedKey === 'all-tokens' ? '¡Copiados!' : 'Copiar todos'}
+                </button>
+                <button
+                  onClick={() => copyToClipboard(generatedTokens.map(t => `${origin}/c/${t}`).join('\n'), 'all-urls')}
+                  className="flex-1 py-2.5 rounded-[10px] text-xs font-semibold"
+                  style={{ border: '1.5px solid #E5E5EA', color: copiedKey === 'all-urls' ? '#34C759' : '#6366F1', backgroundColor: '#FFFFFF' }}
+                >
+                  {copiedKey === 'all-urls' ? '¡Copiadas!' : 'Copiar URLs'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Negocios registrados */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-bold" style={{ color: '#1C1C1E' }}>Negocios registrados</p>
+            {!loadingData && businesses.length > 0 && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: '#EEF2FF', color: '#6366F1' }}>
+                {businesses.length}
+              </span>
+            )}
+          </div>
+
+          {loadingData ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="animate-pulse">
+                  <div className="h-4 w-36 rounded mb-2" style={{ backgroundColor: '#F2F2F7' }} />
+                  <div className="h-3 w-48 rounded" style={{ backgroundColor: '#F2F2F7' }} />
+                </div>
+              ))}
+            </div>
+          ) : businesses.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: '#8E8E93' }}>Sin negocios registrados</p>
+          ) : (
+            <div className="space-y-0">
+              {businesses.map((business, idx) => (
+                <div key={business.id}>
+                  <div className="py-3" style={{
+                    borderBottom: idx < businesses.length - 1 ? '1px solid #F2F2F7' : 'none'
+                  }}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0 mr-2">
+                        <p className="text-sm font-bold truncate" style={{ color: '#1C1C1E' }}>
+                          {business.business_name}
+                        </p>
+                        <p className="text-xs mt-0.5 truncate" style={{ color: '#8E8E93' }}>
+                          {business.owner_name} · {business.phone}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <Link
+                          href={`/${generateBusinessSlug(business.business_name)}/dashboard`}
+                          className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                          style={{ backgroundColor: '#EEF2FF', color: '#6366F1' }}
+                        >
+                          Ver panel →
+                        </Link>
+                        <button
+                          onClick={() => selectedBusinessDetails?.id === business.id
+                            ? setSelectedBusinessDetails(null)
+                            : loadBusinessDetails(business.id)
+                          }
+                          disabled={loadingBusinessDetails && selectedBusinessDetails?.id !== business.id}
+                          className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                          style={{ backgroundColor: '#F2F2F7', color: '#8E8E93' }}
+                        >
+                          {loadingBusinessDetails && selectedBusinessDetails?.id === business.id
+                            ? '...' : selectedBusinessDetails?.id === business.id ? 'Cerrar' : 'Detalles'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Detalles expandibles */}
+                    {selectedBusinessDetails?.id === business.id && (
+                      <div className="mt-3 rounded-xl p-4" style={{ backgroundColor: '#F2F2F7', borderLeft: '4px solid #6366F1' }}>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          {[
+                            { label: 'Servicios', value: selectedBusinessDetails.stats?.activeServices ?? 0, color: '#6366F1' },
+                            { label: 'Clientes', value: selectedBusinessDetails.stats?.totalClients ?? 0, color: '#34C759' },
+                            { label: 'Tokens', value: selectedBusinessDetails.stats?.activeTokens ?? 0, color: '#8B5CF6' },
+                            { label: 'Citas', value: selectedBusinessDetails.stats?.totalAppointments ?? 0, color: '#F59E0B' },
+                          ].map(s => (
+                            <div key={s.label} className="bg-white rounded-xl p-3 text-center" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                              <p className="text-lg font-bold" style={{ color: s.color }}>{s.value}</p>
+                              <p className="text-xs" style={{ color: '#8E8E93' }}>{s.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="space-y-1 text-xs" style={{ color: '#8E8E93' }}>
+                          <p><span className="font-semibold">Dirección:</span> {selectedBusinessDetails.address}</p>
+                          <p><span className="font-semibold">Creado:</span> {new Date(selectedBusinessDetails.created_at).toLocaleDateString('es-ES')}</p>
+                        </div>
+
+                        {selectedBusinessDetails.recentAppointments && selectedBusinessDetails.recentAppointments.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-xs font-semibold mb-2" style={{ color: '#1C1C1E' }}>Citas recientes</p>
+                            <div className="space-y-1.5">
+                              {selectedBusinessDetails.recentAppointments.map(apt => (
+                                <div key={apt.id} className="bg-white rounded-xl px-3 py-2 flex items-center justify-between"
+                                  style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold truncate" style={{ color: '#1C1C1E' }}>
+                                      {apt.users?.first_name} {apt.users?.last_name}
+                                    </p>
+                                    <p className="text-xs truncate" style={{ color: '#8E8E93' }}>{apt.services?.name}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                                    <p className="text-xs" style={{ color: '#8E8E93' }}>
+                                      {new Date(apt.appointment_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
+                                    </p>
+                                    {apptStatusBadge(apt.status)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Solicitudes Demo */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold" style={{ color: '#1C1C1E' }}>Solicitudes Demo</p>
+              {pendingCount > 0 && (
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
+                  style={{ backgroundColor: '#FF3B30' }}>
+                  {pendingCount}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                setShowDemoRequests(!showDemoRequests)
+                if (!showDemoRequests && demoRequests.length === 0) loadDemoRequests()
+              }}
+              className="text-xs font-semibold px-3 py-1.5 rounded-[10px]"
+              style={{ color: '#6366F1', backgroundColor: '#EEF2FF' }}
+            >
+              {showDemoRequests ? 'Ocultar' : 'Ver'}
+            </button>
+          </div>
+          <p className="text-xs mb-0" style={{ color: '#8E8E93' }}>Solicitudes del landing page</p>
+
           {showDemoRequests && (
-            <CardContent>
+            <div className="mt-4">
               {loadingDemoRequests ? (
                 <div className="space-y-3">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="animate-pulse">
-                      <div className="h-20 rounded-lg" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                    </div>
+                  {[1, 2].map(i => (
+                    <div key={i} className="h-20 rounded-xl animate-pulse" style={{ backgroundColor: '#F2F2F7' }} />
                   ))}
                 </div>
               ) : demoRequests.length === 0 ? (
                 <div className="text-center py-8">
-                  <div className="text-4xl mb-4">📭</div>
-                  <p style={{ color: 'var(--text-secondary)' }}>No hay solicitudes de demo</p>
+                  <p className="text-sm" style={{ color: '#8E8E93' }}>Sin solicitudes</p>
                 </div>
               ) : (
-                <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {demoRequests.map((request) => (
-                    <div
-                      key={request.id}
-                      className="p-4 rounded-lg feature-card border"
-                      style={{ borderColor: request.status === 'pending' ? '#1DB954' : 'var(--border-color)' }}
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {demoRequests.map(request => (
+                    <div key={request.id} className="rounded-xl p-4"
+                      style={{
+                        backgroundColor: '#F2F2F7',
+                        borderLeft: request.status === 'pending' ? '4px solid #F59E0B' : '4px solid transparent'
+                      }}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-                              {request.name}
-                            </h4>
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full ${
-                                request.status === 'pending'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : request.status === 'contacted'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : request.status === 'completed'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                            >
-                              {request.status === 'pending' && 'Pendiente'}
-                              {request.status === 'contacted' && 'Contactado'}
-                              {request.status === 'completed' && 'Completado'}
-                              {request.status === 'declined' && 'Rechazado'}
-                            </span>
+                            <p className="text-sm font-bold truncate" style={{ color: '#1C1C1E' }}>{request.name}</p>
+                            {statusBadge(request.status)}
                           </div>
-                          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                            <strong>Negocio:</strong> {request.business_name}
-                          </p>
-                          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                            <strong>Email:</strong> {request.email}
+                          <p className="text-xs" style={{ color: '#8E8E93' }}>
+                            {request.business_name} · {request.email}
                           </p>
                           {request.message && (
-                            <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
-                              <strong>Mensaje:</strong> {request.message}
-                            </p>
+                            <p className="text-xs mt-1.5 italic" style={{ color: '#8E8E93' }}>{request.message}</p>
                           )}
-                          <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                          <p className="text-xs mt-1" style={{ color: '#C7C7CC' }}>
                             {new Date(request.created_at).toLocaleDateString('es-ES', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
+                              day: 'numeric', month: 'short', year: 'numeric'
                             })}
                           </p>
                         </div>
                       </div>
-
-                      <div className="flex gap-2 flex-wrap">
+                      <div className="flex gap-2 flex-wrap mt-2">
                         {request.status === 'pending' && (
                           <>
-                            <Button
-                              size="sm"
-                              variant="outline"
+                            <button
                               onClick={() => updateDemoRequestStatus(request.id, 'contacted')}
-                              className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                              style={{ backgroundColor: '#EFF6FF', color: '#3B82F6' }}
                             >
-                              Marcar como Contactado
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
+                              Contactado
+                            </button>
+                            <button
                               onClick={() => updateDemoRequestStatus(request.id, 'declined')}
-                              className="text-red-600 border-red-600 hover:bg-red-50"
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                              style={{ backgroundColor: '#FFF1F0', color: '#FF3B30' }}
                             >
                               Rechazar
-                            </Button>
+                            </button>
                           </>
                         )}
                         {request.status === 'contacted' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
+                          <button
                             onClick={() => updateDemoRequestStatus(request.id, 'completed')}
-                            className="text-green-600 border-green-600 hover:bg-green-50"
+                            className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                            style={{ backgroundColor: '#F0FFF4', color: '#34C759' }}
                           >
-                            Marcar como Completado
-                          </Button>
+                            Completado
+                          </button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="outline"
+                        <button
                           onClick={() => window.open(`mailto:${request.email}`, '_blank')}
-                          className="text-gray-600 border-gray-600 hover:bg-gray-50"
+                          className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                          style={{ backgroundColor: '#F2F2F7', color: '#8E8E93', border: '1px solid #E5E5EA' }}
                         >
-                          Enviar Email
-                        </Button>
+                          Email
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
+            </div>
           )}
-        </Card>
-
-        {/* Stats/Overview Section */}
-        <div className="grid gap-4 sm:grid-cols-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                {loadingData ? (
-                  <div className="animate-pulse">
-                    <div className="h-8 w-12 rounded mx-auto mb-2" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                    <div className="h-4 w-20 rounded mx-auto" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold spotify-green-text">{stats?.activeBusinesses || 0}</div>
-                    <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Active Businesses</div>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                {loadingData ? (
-                  <div className="animate-pulse">
-                    <div className="h-8 w-12 rounded mx-auto mb-2" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                    <div className="h-4 w-20 rounded mx-auto" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold" style={{ color: '#10b981' }}>{stats?.totalClients || 0}</div>
-                    <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Total Clients</div>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                {loadingData ? (
-                  <div className="animate-pulse">
-                    <div className="h-8 w-12 rounded mx-auto mb-2" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                    <div className="h-4 w-20 rounded mx-auto" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold" style={{ color: '#8b5cf6' }}>{stats?.activeTokens || 0}</div>
-                    <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Active Tokens</div>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                {loadingData ? (
-                  <div className="animate-pulse">
-                    <div className="h-8 w-12 rounded mx-auto mb-2" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                    <div className="h-4 w-20 rounded mx-auto" style={{ backgroundColor: 'var(--bg-secondary)' }}></div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold" style={{ color: '#f59e0b' }}>{stats?.totalAppointments || 0}</div>
-                    <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Total Appointments</div>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         </div>
-
-        {/* Business Management Section */}
-        <Card className="feature-card">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                🏢 Business Management
-              </div>
-              <Button
-                onClick={() => setShowBusinesses(!showBusinesses)}
-                variant="outline"
-                size="sm"
-                className="transition-all duration-300 hover:border-green-500"
-              >
-                {showBusinesses ? 'Hide Businesses' : 'View Businesses'}
-              </Button>
-            </CardTitle>
-            <CardDescription>
-              View and manage all registered businesses in the system
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {showBusinesses && (
-              <div className="space-y-4">
-                {loadingData ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="animate-pulse rounded-lg p-4" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                        <div className="h-4 w-48 rounded mb-2" style={{ backgroundColor: 'var(--bg-tertiary)' }}></div>
-                        <div className="h-3 w-32 rounded" style={{ backgroundColor: 'var(--bg-tertiary)' }}></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : businesses.length > 0 ? (
-                  <div className="grid gap-4">
-                    {businesses.map((business) => (
-                      <div
-                        key={business.id}
-                        className="rounded-lg p-4 feature-card border transition-all duration-300 hover:border-green-500"
-                        style={{ border: '1px solid var(--border-color)' }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-2 flex-1">
-                            <div className="flex items-center gap-3">
-                              <h3 className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>
-                                {business.business_name}
-                              </h3>
-                              <span className="text-sm px-2 py-1 rounded" style={{
-                                backgroundColor: 'var(--bg-tertiary)',
-                                color: 'var(--text-muted)',
-                                border: '1px solid #1DB954'
-                              }}>
-                                Active
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <span style={{ color: 'var(--text-muted)' }}>Owner: </span>
-                                <span style={{ color: 'var(--text-primary)' }}>{business.owner_name}</span>
-                              </div>
-                              <div>
-                                <span style={{ color: 'var(--text-muted)' }}>Phone: </span>
-                                <span style={{ color: 'var(--text-primary)' }}>{business.phone}</span>
-                              </div>
-                              <div className="md:col-span-2">
-                                <span style={{ color: 'var(--text-muted)' }}>Address: </span>
-                                <span style={{ color: 'var(--text-primary)' }}>
-                                  {business.address}
-                                </span>
-                              </div>
-                              <div>
-                                <span style={{ color: 'var(--text-muted)' }}>Created: </span>
-                                <span style={{ color: 'var(--text-primary)' }}>
-                                  {new Date(business.created_at).toLocaleDateString()}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2 ml-4">
-                            <Button
-                              onClick={() => loadBusinessDetails(business.id)}
-                              variant="outline"
-                              size="sm"
-                              className="transition-all duration-300 hover:border-green-500"
-                              disabled={loadingBusinessDetails}
-                            >
-                              {loadingBusinessDetails && selectedBusinessDetails?.id === business.id ? 'Loading...' : 'View Details'}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
-                    No businesses registered yet. Generate a business token to get started.
-                  </div>
-                )}
-
-                {/* Business Details Modal */}
-                {selectedBusinessDetails && (
-                  <div className="mt-6 rounded-lg p-6 feature-card" style={{ border: '2px solid #1DB954' }}>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xl font-bold spotify-green-text">
-                        {selectedBusinessDetails.business_name} - Detailed View
-                      </h3>
-                      <Button
-                        onClick={() => setSelectedBusinessDetails(null)}
-                        variant="outline"
-                        size="sm"
-                        className="transition-all duration-300 hover:border-red-500"
-                      >
-                        Close
-                      </Button>
-                    </div>
-
-                    <div className="grid gap-6 md:grid-cols-2">
-                      {/* Business Info */}
-                      <div className="space-y-4">
-                        <h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Business Information</h4>
-                        <div className="space-y-2 text-sm">
-                          <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Owner: </span>
-                            <span style={{ color: 'var(--text-primary)' }}>{selectedBusinessDetails.owner_name}</span>
-                          </div>
-                          <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Phone: </span>
-                            <span style={{ color: 'var(--text-primary)' }}>{selectedBusinessDetails.phone}</span>
-                          </div>
-                          <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Address: </span>
-                            <span style={{ color: 'var(--text-primary)' }}>{selectedBusinessDetails.address}</span>
-                          </div>
-                          <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Created: </span>
-                            <span style={{ color: 'var(--text-primary)' }}>
-                              {new Date(selectedBusinessDetails.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Business Stats */}
-                      <div className="space-y-4">
-                        <h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Business Statistics</h4>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="text-center p-3 rounded" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                            <div className="text-xl font-bold spotify-green-text">
-                              {selectedBusinessDetails.stats?.activeServices || 0}
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Active Services</div>
-                          </div>
-                          <div className="text-center p-3 rounded" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                            <div className="text-xl font-bold" style={{ color: '#10b981' }}>
-                              {selectedBusinessDetails.stats?.totalClients || 0}
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Total Clients</div>
-                          </div>
-                          <div className="text-center p-3 rounded" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                            <div className="text-xl font-bold" style={{ color: '#8b5cf6' }}>
-                              {selectedBusinessDetails.stats?.activeTokens || 0}
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Active Tokens</div>
-                          </div>
-                          <div className="text-center p-3 rounded" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                            <div className="text-xl font-bold" style={{ color: '#f59e0b' }}>
-                              {selectedBusinessDetails.stats?.totalAppointments || 0}
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Appointments</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Recent Appointments */}
-                    {selectedBusinessDetails.recentAppointments && selectedBusinessDetails.recentAppointments.length > 0 && (
-                      <div className="mt-6">
-                        <h4 className="font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Recent Appointments</h4>
-                        <div className="space-y-2">
-                          {selectedBusinessDetails.recentAppointments.map((appointment: RecentAppointment) => (
-                            <div
-                              key={appointment.id}
-                              className="flex items-center justify-between p-3 rounded"
-                              style={{ backgroundColor: 'var(--bg-secondary)' }}
-                            >
-                              <div className="flex-1">
-                                <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                                  {appointment.users?.first_name} {appointment.users?.last_name}
-                                </div>
-                                <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                  {appointment.services?.name}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
-                                  {new Date(appointment.appointment_date).toLocaleDateString()}
-                                </div>
-                                <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                  {appointment.appointment_time}
-                                </div>
-                              </div>
-                              <div className="ml-3">
-                                <span
-                                  className="text-xs px-2 py-1 rounded"
-                                  style={{
-                                    backgroundColor: appointment.status === 'confirmed' ? '#1DB954' :
-                                                   appointment.status === 'pending' ? '#f59e0b' : '#ef4444',
-                                    color: 'white'
-                                  }}
-                                >
-                                  {appointment.status}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
       </div>
     </div>
