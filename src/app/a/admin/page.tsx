@@ -564,6 +564,7 @@ export default function AdminDashboard() {
                         <Link
                           href={`/${generateBusinessSlug(business.business_name)}/dashboard`}
                           className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                          target="_blank"
                           style={{ backgroundColor: '#EEF2FF', color: '#6366F1' }}
                         >
                           Ver panel →
