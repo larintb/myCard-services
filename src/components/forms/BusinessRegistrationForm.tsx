@@ -61,17 +61,6 @@ function parseFeature(f: AddressSuggestion): AddressDetails {
   return d
 }
 
-// Step labels for progress display
-const STEP_TITLES = [
-  'Tu nombre',
-  'Tu contacto',
-  'Contraseña',
-  'Nombre del negocio',
-  'Sobre el negocio',
-  'Ubicación',
-  'Logo',
-  'Todo listo',
-]
 
 export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrationProps) {
   const [step, setStep] = useState(1)
@@ -775,7 +764,7 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
 
         {/* Animated step content + submit wrapped in form for Enter key support */}
         <form
-          onSubmit={e => { e.preventDefault(); isLastStep ? handleSubmit() : next() }}
+          onSubmit={e => { e.preventDefault(); if (isLastStep) { handleSubmit(); } else { next(); } }}
         >
           <div
             key={animKey}
