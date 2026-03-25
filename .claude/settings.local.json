@@ -25,7 +25,8 @@
       "Bash(hours)",
       "Bash(services \")",
       "Bash(ls:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(grep -r \"^[[:space:]]*//\" /c/Users/vlpiz/Desktop/diana/myCard-services/src --include=\"*.tsx\" --include=\"*.ts\")"
     ],
     "deny": [],
     "ask": []
