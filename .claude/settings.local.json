@@ -15,7 +15,17 @@
       "Bash(npm run lint)",
       "Bash(npx tsc:*)",
       "Bash(git add:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(npm audit:*)",
+      "Bash(grep -E \"\\\\.\\(ts|js|json|css\\)$\")",
+      "Bash(find /c/Users/vlpiz/Desktop/diana/myCard-services -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js -o -name *.json \\\\\\))",
+      "Bash(del:*)",
+      "Bash(ls -la \"C:\\\\Users\\\\vlpiz\\\\Desktop\\\\diana\\\\myCard-services\\\\src\\\\app\\\\api\\\\businesses\\\\[businessId]\"\" | grep -E \"route.ts)",
+      "Bash(appointments)",
+      "Bash(hours)",
+      "Bash(services \")",
+      "Bash(ls:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
