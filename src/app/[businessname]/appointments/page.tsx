@@ -2,9 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { ClientThemeToggle } from '@/components/ui/ClientThemeToggle'
 import { BusinessAdminUser, requireBusinessAdminAuth } from '@/utils/auth'
 
 interface PageProps {
@@ -17,21 +14,43 @@ interface Appointment {
   appointment_time: string
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled'
   notes?: string
-  users: {
-    first_name: string
-    last_name: string
-    phone: string
+  users: { first_name: string; last_name: string; phone: string }
+  services: { name: string; price: number; duration_minutes: number }
+}
+
+const statusBadge = (status: string) => {
+  const map: Record<string, { label: string; style: React.CSSProperties }> = {
+    pending:   { label: 'Pendiente',   style: { backgroundColor: '#FFFBEB', color: '#B45309' } },
+    confirmed: { label: 'Confirmada',  style: { backgroundColor: '#EEF2FF', color: '#6366F1' } },
+    completed: { label: 'Completada',  style: { backgroundColor: '#F0FFF4', color: '#15803D' } },
+    cancelled: { label: 'Cancelada',   style: { backgroundColor: '#FFF1F0', color: '#FF3B30' } },
   }
-  services: {
-    name: string
-    price: number
-    duration_minutes: number
-  }
+  const s = map[status] ?? { label: status, style: { backgroundColor: '#F2F2F7', color: '#8E8E93' } }
+  return (
+    <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={s.style}>
+      {s.label}
+    </span>
+  )
+}
+
+const formatDate = (dateString: string) => {
+  const [y, m, d] = dateString.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  const today = new Date(); today.setHours(0,0,0,0)
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
+  if (date.getTime() === today.getTime()) return 'Hoy'
+  if (date.getTime() === tomorrow.getTime()) return 'Mañana'
+  return date.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+const formatTime = (t: string) => {
+  const [h, m] = t.split(':')
+  const hr = parseInt(h)
+  return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`
 }
 
 export default function AppointmentsPage({ params }: PageProps) {
   const router = useRouter()
-  const [businessName, setBusinessName] = useState<string>('')
   const [user, setUser] = useState<BusinessAdminUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [appointments, setAppointments] = useState<Appointment[]>([])
@@ -41,16 +60,12 @@ export default function AppointmentsPage({ params }: PageProps) {
   const [checkinCode, setCheckinCode] = useState('')
   const [checkinLoading, setCheckinLoading] = useState(false)
 
-
   const loadAppointments = useCallback(async (businessId: string) => {
     try {
       setLoadingAppointments(true)
       const response = await fetch(`/api/businesses/${businessId}/appointments`)
       const data = await response.json()
-
-      if (data.success) {
-        setAppointments(data.appointments)
-      }
+      if (data.success) setAppointments(data.appointments)
     } catch (error) {
       console.error('Error loading appointments:', error)
     } finally {
@@ -58,14 +73,10 @@ export default function AppointmentsPage({ params }: PageProps) {
     }
   }, [])
 
-
   useEffect(() => {
     const getParams = async () => {
       const resolvedParams = await params
       const businessNameDecoded = decodeURIComponent(resolvedParams.businessname)
-      setBusinessName(businessNameDecoded)
-
-      // Wait for businessName to be set before checking auth
       const user = await requireBusinessAdminAuth(businessNameDecoded, router)
       if (user) {
         setUser(user)
@@ -77,66 +88,45 @@ export default function AppointmentsPage({ params }: PageProps) {
   }, [params, router, loadAppointments])
 
   const updateAppointmentStatus = async (appointmentId: string, newStatus: Appointment['status']) => {
-    if (!user?.businessId) {
-      alert('User not authenticated')
-      return
-    }
-
+    if (!user?.businessId) return
     try {
       const response = await fetch(`/api/businesses/${user.businessId}/appointments/${appointmentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       })
-
       const data = await response.json()
-
       if (data.success) {
         await loadAppointments(user.businessId)
-        alert(`Appointment ${newStatus} successfully!`)
       } else {
-        alert('Failed to update appointment: ' + data.error)
+        alert('Error al actualizar: ' + data.error)
       }
     } catch (error) {
       console.error('Error updating appointment:', error)
-      alert('Failed to update appointment')
+      alert('Error al actualizar la cita')
     }
   }
 
   const confirmWithCode = async () => {
-    if (!checkinCode.trim() || checkinCode.length !== 6) {
+    if (checkinCode.trim().length !== 6) {
       alert('Por favor ingresa un código de 6 caracteres válido')
       return
     }
-
-    if (!user?.businessId) {
-      alert('User not authenticated')
-      return
-    }
-
+    if (!user?.businessId) return
     setCheckinLoading(true)
     try {
-      // Verificar código usando la nueva API
       const response = await fetch('/api/checkin-codes', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          code: checkinCode.trim().toUpperCase(),
-          businessId: user.businessId
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: checkinCode.trim().toUpperCase(), businessId: user.businessId })
       })
-
       const data = await response.json()
-
       if (data.success) {
         await loadAppointments(user.businessId)
         setShowCheckinModal(false)
         setCheckinCode('')
-
         const statusText = data.appointment.newStatus === 'confirmed' ? 'confirmada' : 'completada'
-        alert(`✅ Cita ${statusText} exitosamente!\n\nCliente: ${data.appointment.client}\nServicio: ${data.appointment.service}\nHora: ${data.appointment.time}`)
+        alert(`✅ Cita ${statusText}\n\nCliente: ${data.appointment.client}\nServicio: ${data.appointment.service}\nHora: ${data.appointment.time}`)
       } else {
         alert('❌ ' + (data.error || 'Código inválido o expirado'))
       }
@@ -148,358 +138,260 @@ export default function AppointmentsPage({ params }: PageProps) {
     }
   }
 
-  const filteredAppointments = appointments.filter(appointment => {
+  const filteredAppointments = appointments.filter(a => {
     const today = new Date().toISOString().split('T')[0]
-
-    switch (filter) {
-      case 'today':
-        return appointment.appointment_date === today
-      case 'pending':
-        return appointment.status === 'pending'
-      case 'confirmed':
-        return appointment.status === 'confirmed'
-      default:
-        return true
-    }
+    if (filter === 'today') return a.appointment_date === today
+    if (filter === 'pending') return a.status === 'pending'
+    if (filter === 'confirmed') return a.status === 'confirmed'
+    return true
   })
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'text-yellow-400 bg-yellow-900'
-      case 'confirmed': return 'text-green-400 bg-green-900'
-      case 'completed': return 'text-blue-400 bg-blue-900'
-      case 'cancelled': return 'text-red-400 bg-red-900'
-      default: return 'text-gray-400 bg-gray-700'
-    }
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const today = new Date()
-    const tomorrow = new Date()
-    tomorrow.setDate(today.getDate() + 1)
-
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today'
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return 'Tomorrow'
-    } else {
-      return date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      })
-    }
-  }
-
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(':')
-    const hour = parseInt(hours)
-    const ampm = hour >= 12 ? 'PM' : 'AM'
-    const displayHour = hour % 12 || 12
-    return `${displayHour}:${minutes} ${ampm}`
-  }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-app flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 accent-text"></div>
+      <div className="min-h-screen flex items-center justify-center font-poppins" style={{ backgroundColor: '#F2F2F7' }}>
+        <div className="w-10 h-10 rounded-full border-[3px] border-transparent animate-spin"
+          style={{ borderTopColor: '#6366F1', borderRightColor: '#6366F1' }} />
       </div>
     )
   }
 
-  if (!user) {
-    return null
-  }
+  if (!user) return null
+
+  const filterTabs = [
+    { key: 'today', label: 'Hoy' },
+    { key: 'all', label: 'Todas' },
+    { key: 'pending', label: 'Pendientes' },
+    { key: 'confirmed', label: 'Confirmadas' },
+  ] as const
 
   return (
-    <div className="min-h-screen bg-app">
-      <div className="p-4">
-        <div className="mx-auto max-w-6xl space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Button
-                onClick={() => router.push(`/${businessName}/dashboard`)}
-                variant="outline"
-                size="sm"
-                className="mb-4"
-              >
-                ← Volver al Panel
-              </Button>
-              <h1 className="text-3xl font-bold accent-text">
-                Citas
-              </h1>
-              <p className="text-muted mt-1">Administra tus citas y horarios</p>
-            </div>
-            <ClientThemeToggle />
-          </div>
+    <div className="min-h-screen font-poppins screen-enter" style={{ backgroundColor: '#F2F2F7' }}>
+      <div className="px-4 pt-6 pb-4 max-w-lg mx-auto">
 
-          {/* Filters */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { key: 'today', label: 'Hoy' },
-                  { key: 'all', label: 'Todas' },
-                  { key: 'pending', label: 'Pendientes' },
-                  { key: 'confirmed', label: 'Confirmadas' }
-                ].map((filterOption) => (
-                  <Button
-                    key={filterOption.key}
-                    variant={filter === filterOption.key ? 'primary' : 'outline'}
-                    size="sm"
-                    onClick={() => setFilter(filterOption.key as 'all' | 'today' | 'pending' | 'confirmed')}
-                    className={filter === filterOption.key ? 'btn-primary' : ''}
-                  >
-                    {filterOption.label}
-                  </Button>
-                ))}
-              </div>
-              
-              {/* Botón de Check-in con código */}
-              <div className="mt-4 pt-4 border-t border-border">
-                <Button
-                  onClick={() => setShowCheckinModal(true)}
-                  variant="primary"
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Procesar Código de Cliente
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Appointments List */}
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {filter === 'today' ? "Today's Appointments" :
-                 filter === 'all' ? 'All Appointments' :
-                 `${filter.charAt(0).toUpperCase() + filter.slice(1)} Appointments`}
-              </CardTitle>
-              <CardDescription>
-                {filteredAppointments.length} appointment{filteredAppointments.length !== 1 ? 's' : ''}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingAppointments ? (
-                <div className="space-y-4">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="animate-pulse">
-                      <div className="h-24 bg-muted rounded"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : filteredAppointments.length > 0 ? (
-                <div className="space-y-4">
-                  {filteredAppointments.map((appointment) => (
-                    <div key={appointment.id} className="border border-border rounded-lg p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-app">
-                              {appointment.users.first_name} {appointment.users.last_name}
-                            </h3>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(appointment.status)}`}>
-                              {appointment.status}
-                            </span>
-                          </div>
-
-                          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4 text-sm text-muted">
-                            <div>
-                              <span className="font-medium">Service:</span> {appointment.services.name}
-                            </div>
-                            <div>
-                              <span className="font-medium">Date:</span> {formatDate(appointment.appointment_date)}
-                            </div>
-                            <div>
-                              <span className="font-medium">Time:</span> {formatTime(appointment.appointment_time)}
-                            </div>
-                            <div>
-                              <span className="font-medium">Duration:</span> {appointment.services.duration_minutes} min
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-4 mt-2 text-sm text-muted">
-                            <div>
-                              <span className="font-medium">Phone:</span> {appointment.users.phone}
-                            </div>
-                            <div>
-                              <span className="font-medium">Price:</span> ${appointment.services.price}
-                            </div>
-                          </div>
-
-                          {appointment.notes && (
-                            <div className="mt-2">
-                              <span className="text-sm font-medium text-app">Notes:</span>
-                              <p className="text-sm text-muted">{appointment.notes}</p>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col gap-2 ml-4">
-                          {appointment.status === 'pending' && (
-                            <>
-                              <Button
-                                size="sm"
-                                onClick={() => updateAppointmentStatus(appointment.id, 'confirmed')}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                Confirm
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}
-                                className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white"
-                              >
-                                Cancel
-                              </Button>
-                            </>
-                          )}
-                          {appointment.status === 'confirmed' && (
-                            <Button
-                              size="sm"
-                              onClick={() => updateAppointmentStatus(appointment.id, 'completed')}
-                              className="bg-blue-600 hover:bg-blue-700"
-                            >
-                              Complete
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="text-6xl mb-4">📅</div>
-                  <h3 className="text-xl font-semibold text-app mb-2">
-                    No {filter !== 'all' ? filter : ''} appointments
-                  </h3>
-                  <p className="text-muted mb-4">
-                    {filter === 'today'
-                      ? "You don't have any appointments scheduled for today"
-                      : `No ${filter !== 'all' ? filter : ''} appointments found`
-                    }
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <h1 className="text-xl font-bold" style={{ color: '#1C1C1E' }}>Citas</h1>
+          <button
+            onClick={() => setShowCheckinModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-semibold text-white"
+            style={{ backgroundColor: '#6366F1' }}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Check-in
+          </button>
         </div>
+
+        {/* Filter tabs */}
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {filterTabs.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setFilter(t.key)}
+              className="flex-shrink-0 px-4 py-2 rounded-full text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: filter === t.key ? '#6366F1' : '#FFFFFF',
+                color: filter === t.key ? '#FFFFFF' : '#8E8E93',
+                border: filter === t.key ? 'none' : '1px solid #E5E5EA',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Appointments list */}
+        {loadingAppointments ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-white rounded-2xl p-4 animate-pulse" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+                <div className="h-4 w-32 rounded mb-2" style={{ backgroundColor: '#F2F2F7' }} />
+                <div className="h-3 w-24 rounded mb-3" style={{ backgroundColor: '#F2F2F7' }} />
+                <div className="h-3 w-40 rounded" style={{ backgroundColor: '#F2F2F7' }} />
+              </div>
+            ))}
+          </div>
+        ) : filteredAppointments.length > 0 ? (
+          <div className="space-y-3">
+            {filteredAppointments.map(apt => (
+              <div key={apt.id} className="bg-white rounded-2xl p-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: '#1C1C1E' }}>
+                      {apt.users.first_name} {apt.users.last_name}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: '#8E8E93' }}>{apt.users.phone}</p>
+                  </div>
+                  {statusBadge(apt.status)}
+                </div>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>{formatDate(apt.appointment_date)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>{formatTime(apt.appointment_time)}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-2.5 px-3 rounded-xl mb-3"
+                  style={{ backgroundColor: '#F2F2F7' }}>
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: '#1C1C1E' }}>{apt.services.name}</p>
+                    <p className="text-xs" style={{ color: '#8E8E93' }}>{apt.services.duration_minutes} min</p>
+                  </div>
+                  <p className="text-sm font-bold" style={{ color: '#6366F1' }}>${apt.services.price}</p>
+                </div>
+
+                {apt.notes && (
+                  <p className="text-xs mb-3 px-1" style={{ color: '#8E8E93' }}>
+                    Nota: {apt.notes}
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  {apt.status === 'pending' && (
+                    <>
+                      <button
+                        onClick={() => updateAppointmentStatus(apt.id, 'confirmed')}
+                        className="flex-1 py-2 rounded-[10px] text-xs font-semibold text-white"
+                        style={{ backgroundColor: '#6366F1' }}
+                      >
+                        Confirmar
+                      </button>
+                      <button
+                        onClick={() => updateAppointmentStatus(apt.id, 'cancelled')}
+                        className="flex-1 py-2 rounded-[10px] text-xs font-semibold"
+                        style={{ color: '#FF3B30', backgroundColor: '#FFF1F0', border: '1px solid #FFCDD2' }}
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  )}
+                  {apt.status === 'confirmed' && (
+                    <button
+                      onClick={() => updateAppointmentStatus(apt.id, 'completed')}
+                      className="flex-1 py-2 rounded-[10px] text-xs font-semibold text-white"
+                      style={{ backgroundColor: '#34C759' }}
+                    >
+                      Completar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ backgroundColor: '#F2F2F7' }}>
+              <svg className="w-7 h-7" style={{ color: '#C7C7CC' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium" style={{ color: '#8E8E93' }}>Sin citas</p>
+            <p className="text-xs mt-1" style={{ color: '#C7C7CC' }}>No hay citas para este filtro</p>
+          </div>
+        )}
       </div>
 
-      {/* Modal de Check-in con Código */}
+      {/* Check-in modal */}
       {showCheckinModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card rounded-lg p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-app">Check-in con Código</h3>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.2)' }}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold" style={{ color: '#1C1C1E' }}>Check-in con código</h3>
               <button
-                onClick={() => {
-                  setShowCheckinModal(false);
-                  setCheckinCode('');
-                }}
-                className="text-muted hover:text-app">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                onClick={() => { setShowCheckinModal(false); setCheckinCode('') }}
+                className="w-8 h-8 flex items-center justify-center rounded-full"
+                style={{ backgroundColor: '#F2F2F7' }}
+              >
+                <svg className="w-4 h-4" style={{ color: '#8E8E93' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            
-            <div className="space-y-4">
-              {/* Información de citas disponibles */}
-              <div className="bg-muted/20 rounded-lg p-3">
-                <h4 className="text-sm font-medium text-app mb-2">Citas disponibles para check-in:</h4>
-                {(() => {
-                  const today = new Date().toISOString().split('T')[0]
-                  const availableAppointments = appointments.filter(appointment => {
-                    return appointment.appointment_date >= today &&
-                           (appointment.status === 'pending' || appointment.status === 'confirmed')
-                  })
-                  
-                  if (availableAppointments.length === 0) {
-                    return <p className="text-xs text-muted">No hay citas disponibles para check-in</p>
-                  }
 
-                  return (
-                    <div className="space-y-1">
-                      {availableAppointments.slice(0, 3).map((apt) => (
-                        <div key={apt.id} className="flex justify-between items-center text-xs">
-                          <span className="text-app">
-                            {apt.users.first_name} {apt.users.last_name}
-                          </span>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-muted">{apt.appointment_date} {apt.appointment_time}</span>
-                            <span className={`px-2 py-1 rounded-full text-xs ${
-                              apt.status === 'pending' ? 'bg-yellow-900 text-yellow-300' :
-                              'bg-green-900 text-green-300'
-                            }`}>
-                              {apt.status === 'pending' ? 'Por confirmar' : 'Confirmar llegada'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                      {availableAppointments.length > 3 && (
-                        <p className="text-xs text-muted mt-1">
-                          +{availableAppointments.length - 3} citas más
-                        </p>
-                      )}
+            {/* Available for check-in */}
+            {(() => {
+              const today = new Date().toISOString().split('T')[0]
+              const available = appointments.filter(a =>
+                a.appointment_date >= today && (a.status === 'pending' || a.status === 'confirmed')
+              )
+              if (available.length === 0) return null
+              return (
+                <div className="rounded-xl p-3 mb-4" style={{ backgroundColor: '#F2F2F7' }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: '#8E8E93' }}>CITAS DISPONIBLES</p>
+                  {available.slice(0, 3).map(a => (
+                    <div key={a.id} className="flex items-center justify-between py-1">
+                      <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>
+                        {a.users.first_name} {a.users.last_name}
+                      </span>
+                      <span className="text-xs" style={{ color: '#8E8E93' }}>{formatTime(a.appointment_time)}</span>
                     </div>
-                  )
-                })()}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-app mb-2">
-                  Código de 6 dígitos
-                </label>
-                <input
-                  type="text"
-                  value={checkinCode}
-                  onChange={(e) => setCheckinCode(e.target.value.toUpperCase().slice(0, 6))}
-                  placeholder="Ej: A3B2C1"
-                  className="w-full px-4 py-3 bg-input border border-border rounded-lg text-app text-center text-xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-                  maxLength={6}
-                />
-                <p className="text-xs text-muted mt-1">
-                  Ingresa el código mostrado en la pantalla del cliente
-                </p>
-              </div>
-
-              <div className="flex space-x-3">
-                <Button
-                  onClick={() => {
-                    setShowCheckinModal(false);
-                    setCheckinCode('');
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={confirmWithCode}
-                  variant="primary"
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                  disabled={checkinCode.length !== 6 || checkinLoading}
-                >
-                  {checkinLoading ? (
-                    <div className="flex items-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Procesando...
-                    </div>
-                  ) : (
-                    'Procesar Check-in'
+                  ))}
+                  {available.length > 3 && (
+                    <p className="text-xs mt-1" style={{ color: '#8E8E93' }}>+{available.length - 3} más</p>
                   )}
-                </Button>
-              </div>
+                </div>
+              )
+            })()}
+
+            <div className="mb-5">
+              <label className="text-xs font-semibold mb-2 block" style={{ color: '#8E8E93' }}>
+                CÓDIGO DEL CLIENTE
+              </label>
+              <input
+                type="text"
+                value={checkinCode}
+                onChange={e => setCheckinCode(e.target.value.toUpperCase().slice(0, 6))}
+                placeholder="A3B2C1"
+                maxLength={6}
+                className="w-full px-4 py-4 rounded-xl text-center text-2xl font-bold tracking-[0.3em] outline-none"
+                style={{
+                  border: '1.5px solid #E5E5EA',
+                  color: '#1C1C1E',
+                  letterSpacing: '0.3em',
+                  fontFamily: 'var(--font-poppins), monospace',
+                }}
+                autoFocus
+              />
+              <p className="text-xs mt-1.5" style={{ color: '#8E8E93' }}>Ingresa el código de 6 caracteres del cliente</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowCheckinModal(false); setCheckinCode('') }}
+                className="flex-1 py-3 rounded-[14px] text-sm font-semibold"
+                style={{ color: '#8E8E93', backgroundColor: '#F2F2F7' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmWithCode}
+                disabled={checkinCode.length !== 6 || checkinLoading}
+                className="flex-1 py-3 rounded-[14px] text-sm font-semibold text-white transition-all"
+                style={{
+                  backgroundColor: checkinCode.length === 6 && !checkinLoading ? '#6366F1' : '#A5B4FC',
+                  cursor: checkinCode.length === 6 && !checkinLoading ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {checkinLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
+                      style={{ borderTopColor: 'white', borderRightColor: 'white' }} />
+                    Procesando...
+                  </span>
+                ) : 'Procesar'}
+              </button>
             </div>
           </div>
         </div>

@@ -2,9 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { ClientThemeToggle } from '@/components/ui/ClientThemeToggle'
+import Link from 'next/link'
 import { BusinessAdminUser, requireBusinessAdminAuth } from '@/utils/auth'
 
 interface PageProps {
@@ -16,21 +14,9 @@ interface ReportData {
   totalAppointments: number
   totalClients: number
   avgAppointmentValue: number
-  monthlyData: {
-    month: string
-    revenue: number
-    appointments: number
-    newClients: number
-  }[]
-  topServices: {
-    name: string
-    count: number
-    revenue: number
-  }[]
-  clientRetention: {
-    returning: number
-    new: number
-  }
+  monthlyData: { month: string; revenue: number; appointments: number; newClients: number }[]
+  topServices: { name: string; count: number; revenue: number }[]
+  clientRetention: { returning: number; new: number }
 }
 
 export default function ReportsPage({ params }: PageProps) {
@@ -40,18 +26,14 @@ export default function ReportsPage({ params }: PageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [reportData, setReportData] = useState<ReportData | null>(null)
   const [loadingReports, setLoadingReports] = useState(true)
-  const [dateRange, setDateRange] = useState('3months') // 1month, 3months, 6months, 1year
-
+  const [dateRange, setDateRange] = useState('3months')
 
   const loadReportData = useCallback(async (businessId: string) => {
     try {
       setLoadingReports(true)
       const response = await fetch(`/api/businesses/${businessId}/reports?range=${dateRange}`)
       const data = await response.json()
-
-      if (data.success) {
-        setReportData(data.reports)
-      }
+      if (data.success) setReportData(data.reports)
     } catch (error) {
       console.error('Error loading report data:', error)
     } finally {
@@ -59,14 +41,11 @@ export default function ReportsPage({ params }: PageProps) {
     }
   }, [dateRange])
 
-
   useEffect(() => {
     const getParams = async () => {
       const resolvedParams = await params
       const businessNameDecoded = decodeURIComponent(resolvedParams.businessname)
       setBusinessName(businessNameDecoded)
-
-      // Wait for businessName to be set before checking auth
       const user = await requireBusinessAdminAuth(businessNameDecoded, router)
       if (user) {
         setUser(user)
@@ -78,256 +57,168 @@ export default function ReportsPage({ params }: PageProps) {
   }, [params, router, loadReportData])
 
   useEffect(() => {
-    if (user?.businessId) {
-      loadReportData(user.businessId)
-    }
+    if (user?.businessId) loadReportData(user.businessId)
   }, [dateRange, user?.businessId, loadReportData])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
+  const fmtCurrency = (n: number) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'USD' }).format(n)
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      year: 'numeric'
-    })
-  }
+  const fmtMonth = (d: string) =>
+    new Date(d).toLocaleDateString('es-MX', { month: 'short', year: 'numeric' })
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-app flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 accent-text"></div>
+      <div className="min-h-screen flex items-center justify-center font-poppins" style={{ backgroundColor: '#F2F2F7' }}>
+        <div className="w-10 h-10 rounded-full border-[3px] border-transparent animate-spin"
+          style={{ borderTopColor: '#6366F1', borderRightColor: '#6366F1' }} />
       </div>
     )
   }
 
-  if (!user) {
-    return null
-  }
+  if (!user) return null
+
+  const rangeOptions = [
+    { key: '1month', label: '1M' },
+    { key: '3months', label: '3M' },
+    { key: '6months', label: '6M' },
+    { key: '1year', label: '1A' },
+  ]
 
   return (
-    <div className="min-h-screen bg-app">
-      <div className="p-4">
-        <div className="mx-auto max-w-6xl space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Button
-                onClick={() => router.push(`/${businessName}/dashboard`)}
-                variant="outline"
-                size="sm"
-                className="mb-4"
-              >
-                ← Volver al Panel
-              </Button>
-              <h1 className="text-3xl font-bold accent-text">
-                Análisis y Reportes
-              </h1>
-              <p className="text-muted mt-1">Información sobre el rendimiento de tu negocio</p>
-            </div>
-            <ClientThemeToggle />
+    <div className="min-h-screen font-poppins screen-enter" style={{ backgroundColor: '#F2F2F7' }}>
+      <div className="px-4 pt-6 pb-8 max-w-lg mx-auto">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <Link href={`/${businessName}/settings`}
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E5EA' }}>
+              <svg className="w-4 h-4" style={{ color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <h1 className="text-xl font-bold" style={{ color: '#1C1C1E' }}>Reportes</h1>
           </div>
 
-          {/* Date Range Selector */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap gap-2">
-                <span className="text-sm text-muted self-center mr-4">Período de Tiempo:</span>
-                {[
-                  { key: '1month', label: 'Último Mes' },
-                  { key: '3months', label: 'Últimos 3 Meses' },
-                  { key: '6months', label: 'Últimos 6 Meses' },
-                  { key: '1year', label: 'Último Año' }
-                ].map((range) => (
-                  <Button
-                    key={range.key}
-                    variant={dateRange === range.key ? 'primary' : 'outline'}
-                    size="sm"
-                    onClick={() => setDateRange(range.key)}
-                    className={dateRange === range.key ? 'btn-primary' : ''}
-                  >
-                    {range.label}
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {/* Range pills */}
+          <div className="flex gap-1">
+            {rangeOptions.map(r => (
+              <button
+                key={r.key}
+                onClick={() => setDateRange(r.key)}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                style={{
+                  backgroundColor: dateRange === r.key ? '#6366F1' : '#FFFFFF',
+                  color: dateRange === r.key ? '#FFFFFF' : '#8E8E93',
+                  border: dateRange === r.key ? 'none' : '1px solid #E5E5EA',
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-          {loadingReports ? (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <Card key={i}>
-                  <CardContent className="pt-6">
-                    <div className="animate-pulse text-center">
-                      <div className="h-8 w-16 bg-muted rounded mx-auto mb-2"></div>
-                      <div className="h-4 w-20 bg-muted rounded mx-auto"></div>
-                    </div>
-                  </CardContent>
-                </Card>
+        {loadingReports ? (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="bg-white rounded-2xl p-4 animate-pulse h-20"
+                style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+                <div className="h-6 w-16 rounded mb-2" style={{ backgroundColor: '#F2F2F7' }} />
+                <div className="h-3 w-20 rounded" style={{ backgroundColor: '#F2F2F7' }} />
+              </div>
+            ))}
+          </div>
+        ) : reportData ? (
+          <>
+            {/* Key metrics */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {[
+                { value: fmtCurrency(reportData.totalRevenue), label: 'Ingresos totales', color: '#6366F1' },
+                { value: reportData.totalAppointments, label: 'Citas totales', color: '#34C759' },
+                { value: reportData.totalClients, label: 'Clientes', color: '#FF9500' },
+                { value: fmtCurrency(reportData.avgAppointmentValue), label: 'Promedio por cita', color: '#6366F1' },
+              ].map((m, i) => (
+                <div key={i} className="bg-white rounded-2xl p-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+                  <p className="text-xl font-bold" style={{ color: m.color }}>{m.value}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#8E8E93' }}>{m.label}</p>
+                </div>
               ))}
             </div>
-          ) : reportData ? (
-            <>
-              {/* Key Metrics */}
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold accent-text">
-                        {formatCurrency(reportData.totalRevenue)}
-                      </div>
-                      <div className="text-sm text-muted">Total Revenue</div>
-                    </div>
-                  </CardContent>
-                </Card>
 
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold accent-text">
-                        {reportData.totalAppointments}
+            {/* Monthly trends */}
+            {reportData.monthlyData?.length > 0 && (
+              <div className="bg-white rounded-2xl p-4 mb-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8E8E93' }}>TENDENCIA MENSUAL</p>
+                {reportData.monthlyData.map((m, i) => (
+                  <div key={i}
+                    className="flex items-center justify-between py-2.5"
+                    style={{ borderBottom: i < reportData.monthlyData.length - 1 ? '1px solid #F2F2F7' : 'none' }}>
+                    <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>{fmtMonth(m.month)}</span>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-xs font-semibold" style={{ color: '#6366F1' }}>{fmtCurrency(m.revenue)}</p>
+                        <p className="text-[10px]" style={{ color: '#8E8E93' }}>{m.appointments} citas · {m.newClients} nuevos</p>
                       </div>
-                      <div className="text-sm text-muted">Total Appointments</div>
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold accent-text">
-                        {reportData.totalClients}
-                      </div>
-                      <div className="text-sm text-muted">Total Clients</div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold accent-text">
-                        {formatCurrency(reportData.avgAppointmentValue)}
-                      </div>
-                      <div className="text-sm text-muted">Avg Appointment Value</div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                ))}
               </div>
+            )}
 
-              {/* Monthly Trends */}
-              {reportData.monthlyData && reportData.monthlyData.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Monthly Trends</CardTitle>
-                    <CardDescription>
-                      Revenue and appointment trends over time
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {reportData.monthlyData.map((month, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 border border-border rounded">
-                          <div>
-                            <span className="font-medium text-app">{formatDate(month.month)}</span>
-                          </div>
-                          <div className="flex gap-6 text-sm">
-                            <div>
-                              <span className="text-muted">Revenue: </span>
-                              <span className="accent-text font-medium">{formatCurrency(month.revenue)}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted">Appointments: </span>
-                              <span className="accent-text font-medium">{month.appointments}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted">New Clients: </span>
-                              <span className="accent-text font-medium">{month.newClients}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+            {/* Top services */}
+            {reportData.topServices?.length > 0 && (
+              <div className="bg-white rounded-2xl p-4 mb-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8E8E93' }}>TOP SERVICIOS</p>
+                {reportData.topServices.map((s, i) => (
+                  <div key={i}
+                    className="flex items-center justify-between py-2.5"
+                    style={{ borderBottom: i < reportData.topServices.length - 1 ? '1px solid #F2F2F7' : 'none' }}>
+                    <div>
+                      <p className="text-xs font-semibold" style={{ color: '#1C1C1E' }}>{s.name}</p>
+                      <p className="text-[10px]" style={{ color: '#8E8E93' }}>{s.count} citas</p>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                {/* Top Services */}
-                {reportData.topServices && reportData.topServices.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Top Services</CardTitle>
-                      <CardDescription>
-                        Most popular services by appointments
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {reportData.topServices.map((service, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 border border-border rounded">
-                            <div>
-                              <span className="font-medium text-app">{service.name}</span>
-                              <div className="text-sm text-muted">{service.count} appointments</div>
-                            </div>
-                            <div className="accent-text font-medium">
-                              {formatCurrency(service.revenue)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Client Retention */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Client Overview</CardTitle>
-                    <CardDescription>
-                      New vs returning clients
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between p-3 border border-border rounded">
-                        <span className="font-medium text-app">Returning Clients</span>
-                        <span className="accent-text font-medium">
-                          {reportData.clientRetention?.returning || 0}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-3 border border-border rounded">
-                        <span className="font-medium text-app">New Clients</span>
-                        <span className="accent-text font-medium">
-                          {reportData.clientRetention?.new || 0}
-                        </span>
-                      </div>
-                      <div className="text-sm text-muted text-center">
-                        Retention Rate: {
-                          reportData.clientRetention
-                            ? Math.round((reportData.clientRetention.returning / (reportData.clientRetention.returning + reportData.clientRetention.new)) * 100)
-                            : 0
-                        }%
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    <p className="text-sm font-bold" style={{ color: '#6366F1' }}>{fmtCurrency(s.revenue)}</p>
+                  </div>
+                ))}
               </div>
-            </>
-          ) : (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">📊</div>
-              <h3 className="text-xl font-semibold text-app mb-2">No data available</h3>
-              <p className="text-muted mb-4">
-                Complete some appointments to see your analytics
-              </p>
+            )}
+
+            {/* Client retention */}
+            <div className="bg-white rounded-2xl p-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: '#8E8E93' }}>CLIENTES</p>
+              <div className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #F2F2F7' }}>
+                <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>Clientes recurrentes</span>
+                <span className="text-sm font-bold" style={{ color: '#34C759' }}>{reportData.clientRetention?.returning ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #F2F2F7' }}>
+                <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>Clientes nuevos</span>
+                <span className="text-sm font-bold" style={{ color: '#6366F1' }}>{reportData.clientRetention?.new ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>Tasa de retención</span>
+                <span className="text-sm font-bold" style={{ color: '#6366F1' }}>
+                  {reportData.clientRetention
+                    ? Math.round((reportData.clientRetention.returning / Math.max(reportData.clientRetention.returning + reportData.clientRetention.new, 1)) * 100)
+                    : 0}%
+                </span>
+              </div>
             </div>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="text-center py-16">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ backgroundColor: '#F2F2F7' }}>
+              <svg className="w-7 h-7" style={{ color: '#C7C7CC' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium" style={{ color: '#8E8E93' }}>Sin datos disponibles</p>
+            <p className="text-xs mt-1" style={{ color: '#C7C7CC' }}>Completa citas para ver reportes</p>
+          </div>
+        )}
       </div>
     </div>
   )

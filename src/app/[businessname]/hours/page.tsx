@@ -2,9 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { ClientThemeToggle } from '@/components/ui/ClientThemeToggle'
+import Link from 'next/link'
 import { BusinessAdminUser, requireBusinessAdminAuth } from '@/utils/auth'
 
 interface PageProps {
@@ -19,9 +17,28 @@ interface BusinessHour {
   is_active: boolean
 }
 
-const DAYS_OF_WEEK = [
-  'Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'
-]
+const DAYS_OF_WEEK = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+const normalizeTimeFromDB = (t: string): string => {
+  if (!t) return '09:00'
+  if (t.match(/^\d{2}:\d{2}$/)) return t
+  const m = t.match(/^(\d{2}):(\d{2}):\d{2}$/)
+  if (m) return `${m[1]}:${m[2]}`
+  return '09:00'
+}
+
+const generateTimeOptions = () => {
+  const times = []
+  for (let h = 0; h < 24; h++) {
+    for (const m of ['00', '30']) {
+      const t = `${h.toString().padStart(2, '0')}:${m}`
+      times.push(t)
+    }
+  }
+  return times
+}
+
+const timeOptions = generateTimeOptions()
 
 export default function BusinessHoursPage({ params }: PageProps) {
   const router = useRouter()
@@ -32,108 +49,48 @@ export default function BusinessHoursPage({ params }: PageProps) {
   const [loadingHours, setLoadingHours] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
-  // Note: formatTimeForDisplay function removed as it was unused
-
-  // Normalize time format from database (HH:MM:SS) to dropdown format (HH:MM)
-  const normalizeTimeFromDB = (timeString: string): string => {
-    if (!timeString) return '09:00'
-    
-    // If it's already in HH:MM format, return as is
-    if (timeString.match(/^\d{2}:\d{2}$/)) {
-      return timeString
-    }
-    
-    // If it's in HH:MM:SS format, remove the seconds
-    const match = timeString.match(/^(\d{2}):(\d{2}):\d{2}$/)
-    if (match) {
-      return `${match[1]}:${match[2]}`
-    }
-    
-    // Fallback to default
-    return '09:00'
-  }
-
-  // Generate time options for dropdowns in 24-hour format
-  const generateTimeOptions = () => {
-    const times = []
-    for (let hour = 0; hour < 24; hour++) { // Start from 0 to include midnight
-      for (const minute of ['00', '30']) {
-        const timeStr = `${hour.toString().padStart(2, '0')}:${minute}`
-        times.push({ value: timeStr, label: timeStr }) // Use 24-hour format for both value and label
-      }
-    }
-    return times
-  }
-
-  const timeOptions = generateTimeOptions()
-
   const loadBusinessHours = useCallback(async (businessId: string) => {
     try {
       setLoadingHours(true)
       const response = await fetch(`/api/businesses/${businessId}/hours`)
       const data = await response.json()
-
       if (data.success) {
-        // If no hours exist, create default inactive hours for all 7 days
         if (!data.hours || data.hours.length === 0) {
-          const defaultHours: BusinessHour[] = Array.from({ length: 7 }, (_, index) => ({
-            day_of_week: index,
-            open_time: '09:00',
-            close_time: '17:00',
-            is_active: false
-          }))
-          setBusinessHours(defaultHours)
+          setBusinessHours(Array.from({ length: 7 }, (_, i) => ({
+            day_of_week: i, open_time: '09:00', close_time: '17:00', is_active: false
+          })))
         } else {
-          // Ensure we have all 7 days represented
-          const completeHours: BusinessHour[] = []
-
+          const complete: BusinessHour[] = []
           for (let day = 0; day < 7; day++) {
             const existing = data.hours.find((h: BusinessHour) => h.day_of_week === day)
             if (existing) {
-              // Ensure existing hours have valid time values and normalize them
-              const normalizedHour = {
+              complete.push({
                 ...existing,
                 open_time: normalizeTimeFromDB(existing.open_time || '09:00'),
-                close_time: normalizeTimeFromDB(existing.close_time || '17:00')
-              }
-              completeHours.push(normalizedHour)
-            } else {
-              // Add missing day with default values
-              completeHours.push({
-                day_of_week: day,
-                open_time: '09:00',
-                close_time: '17:00',
-                is_active: false
+                close_time: normalizeTimeFromDB(existing.close_time || '17:00'),
               })
+            } else {
+              complete.push({ day_of_week: day, open_time: '09:00', close_time: '17:00', is_active: false })
             }
           }
-
-          setBusinessHours(completeHours)
+          setBusinessHours(complete)
         }
       }
     } catch (error) {
       console.error('Error loading business hours:', error)
-      // If there's an error, still show default hours so user can configure
-      const defaultHours: BusinessHour[] = Array.from({ length: 7 }, (_, index) => ({
-        day_of_week: index,
-        open_time: '09:00',
-        close_time: '17:00',
-        is_active: false
-      }))
-      setBusinessHours(defaultHours)
+      setBusinessHours(Array.from({ length: 7 }, (_, i) => ({
+        day_of_week: i, open_time: '09:00', close_time: '17:00', is_active: false
+      })))
     } finally {
       setLoadingHours(false)
     }
   }, [])
-
 
   useEffect(() => {
     const getParams = async () => {
       const resolvedParams = await params
       const businessNameDecoded = decodeURIComponent(resolvedParams.businessname)
       setBusinessName(businessNameDecoded)
-
-      // Wait for businessName to be set before checking auth
       const user = await requireBusinessAdminAuth(businessNameDecoded, router)
       if (user) {
         setUser(user)
@@ -145,345 +102,207 @@ export default function BusinessHoursPage({ params }: PageProps) {
   }, [params, router, loadBusinessHours])
 
   const updateDayHours = (dayIndex: number, field: keyof BusinessHour, value: string | boolean) => {
-    setBusinessHours(prev => prev.map(hour => {
-      if (hour.day_of_week === dayIndex) {
-        const updatedHour = { ...hour, [field]: value }
-
-        // If activating a day and times are empty, set reasonable defaults
-        if (field === 'is_active' && value === true) {
-          if (!updatedHour.open_time || updatedHour.open_time === '00:00' || updatedHour.open_time === '') {
-            updatedHour.open_time = '09:00'
-          }
-          if (!updatedHour.close_time || updatedHour.close_time === '00:00' || updatedHour.close_time === '') {
-            updatedHour.close_time = '17:00'
-          }
-        }
-
-        // Ensure times are never empty or null
-        if (field === 'open_time' && (!value || value === '')) {
-          updatedHour.open_time = '09:00'
-        }
-        if (field === 'close_time' && (!value || value === '')) {
-          updatedHour.close_time = '17:00'
-        }
-
-        return updatedHour
+    setBusinessHours(prev => prev.map(h => {
+      if (h.day_of_week !== dayIndex) return h
+      const updated = { ...h, [field]: value }
+      if (field === 'is_active' && value === true) {
+        if (!updated.open_time || updated.open_time === '00:00') updated.open_time = '09:00'
+        if (!updated.close_time || updated.close_time === '00:00') updated.close_time = '17:00'
       }
-      return hour
+      return updated
     }))
   }
 
-  // Handle dropdown time change
-  const handleDropdownTimeChange = (dayIndex: number, field: 'open_time' | 'close_time', selectedValue: string) => {
-    updateDayHours(dayIndex, field, selectedValue)
+  const validateBusinessHours = (): string[] => {
+    const errors: string[] = []
+    businessHours.forEach(h => {
+      if (h.is_active) {
+        if (!h.open_time || !h.close_time) {
+          errors.push(`${DAYS_OF_WEEK[h.day_of_week]}: Selecciona horario de apertura y cierre`)
+          return
+        }
+        if (h.open_time >= h.close_time) {
+          errors.push(`${DAYS_OF_WEEK[h.day_of_week]}: La hora de cierre debe ser después de la apertura`)
+        }
+      }
+    })
+    return errors
   }
 
   const saveBusinessHours = async () => {
-    if (!user?.businessId) {
-      alert('No se encontró ID del negocio. Por favor inicia sesión nuevamente.')
+    if (!user?.businessId) return
+    const errors = validateBusinessHours()
+    if (errors.length > 0) {
+      alert('Corrige los siguientes errores:\n' + errors.join('\n'))
       return
     }
-
     try {
       setIsSaving(true)
-      console.log('Saving business hours for businessId:', user.businessId)
-      console.log('Business hours to save:', businessHours)
-
-      // Simple validation
-      const validationErrors = validateBusinessHours()
-      
-      if (validationErrors.length > 0) {
-        alert('Por favor corrige los siguientes problemas:\n' + validationErrors.join('\n'))
-        return
-      }
-
-      const requestBody = { hours: businessHours }
-      console.log('Request body:', requestBody)
-      console.log('Individual hours being sent:')
-      businessHours.forEach((hour, index) => {
-        console.log(`Day ${index} (${DAYS_OF_WEEK[index]}): active=${hour.is_active}, open="${hour.open_time}", close="${hour.close_time}"`)
-        if (hour.is_active) {
-          console.log(`  -> This day will be saved to database`)
-        }
-      })
-
       const response = await fetch(`/api/businesses/${user.businessId}/hours`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({ hours: businessHours })
       })
-
-      console.log('Save response status:', response.status)
       const data = await response.json()
-      console.log('Save response data:', data)
-
       if (data.success) {
-        alert('¡Horarios guardados exitosamente!')
+        alert('¡Horarios guardados!')
         await loadBusinessHours(user.businessId)
       } else {
-        console.error('Save failed:', data.error)
-        alert('Error al guardar horarios: ' + (data.error || 'Error desconocido'))
+        alert('Error: ' + (data.error || 'Error desconocido'))
       }
     } catch (error) {
       console.error('Error saving business hours:', error)
-      alert('Error al guardar horarios. Revisa la consola para más detalles.')
+      alert('Error al guardar horarios')
     } finally {
       setIsSaving(false)
     }
   }
 
-  const validateBusinessHours = (): string[] => {
-    const errors: string[] = []
-    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
-
-    businessHours.forEach((hour) => {
-      if (hour.is_active) {
-        // Simple validation - just check if times exist
-        if (!hour.open_time || !hour.close_time) {
-          errors.push(`${dayNames[hour.day_of_week]}: Por favor selecciona horario de apertura y cierre`)
-          return
-        }
-
-        // Simple time comparison
-        if (hour.open_time >= hour.close_time) {
-          errors.push(`${dayNames[hour.day_of_week]}: La hora de cierre debe ser después de la hora de apertura`)
-        }
-      }
-    })
-
-    return errors
-  }
-
   const setAllDays = (isActive: boolean) => {
-    setBusinessHours(prev => prev.map(hour => {
-      if (isActive && (!hour.open_time || !hour.close_time || hour.open_time === '' || hour.close_time === '')) {
-        // Set default times if activating and no times are set or they are empty
-        return {
-          ...hour,
-          is_active: isActive,
-          open_time: hour.open_time || '09:00',
-          close_time: hour.close_time || '17:00'
-        }
-      }
-      return { ...hour, is_active: isActive }
-    }))
+    setBusinessHours(prev => prev.map(h => ({
+      ...h,
+      is_active: isActive,
+      open_time: isActive && (!h.open_time || h.open_time === '') ? '09:00' : h.open_time,
+      close_time: isActive && (!h.close_time || h.close_time === '') ? '17:00' : h.close_time,
+    })))
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
-        <div className="absolute top-4 right-4">
-          <ClientThemeToggle />
-        </div>
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+      <div className="min-h-screen flex items-center justify-center font-poppins" style={{ backgroundColor: '#F2F2F7' }}>
+        <div className="w-10 h-10 rounded-full border-[3px] border-transparent animate-spin"
+          style={{ borderTopColor: '#6366F1', borderRightColor: '#6366F1' }} />
       </div>
     )
   }
 
-  if (!user) {
-    return null
-  }
+  if (!user) return null
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      <div className="p-4">
-        <div className="mx-auto max-w-4xl space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="absolute top-4 right-4">
-              <ClientThemeToggle />
-            </div>
-            <div>
-              <Button
-                onClick={() => router.push(`/${businessName}/dashboard`)}
-                variant="outline"
-                size="sm"
-                className="mb-4"
-              >
-                ← Volver al Panel
-              </Button>
-              <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                Horarios de Atención
-              </h1>
-              <p className="mt-1" style={{ color: 'var(--text-muted)' }}>Configura cuándo tu negocio está abierto</p>
-            </div>
-            <Button
-              onClick={saveBusinessHours}
-              loading={isSaving}
-              variant="primary"
-            >
-              Guardar Horarios
-            </Button>
-          </div>
+    <div className="min-h-screen font-poppins screen-enter" style={{ backgroundColor: '#F2F2F7' }}>
+      <div className="px-4 pt-6 pb-8 max-w-lg mx-auto">
 
-          {/* Quick Actions */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setAllDays(true)}
-                  size="sm"
-                >
-                  Abrir Todos los Días
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setAllDays(false)}
-                  size="sm"
-                >
-                  Cerrar Todos los Días
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Business Hours Configuration */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Horario Semanal</CardTitle>
-              <CardDescription>
-                Configura tus horas de operación para cada día de la semana
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingHours ? (
-                <div className="space-y-4">
-                  {DAYS_OF_WEEK.map((_, index) => (
-                    <div key={index} className="animate-pulse">
-                      <div className="h-16 bg-gray-200 rounded"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <>
-                  {/* Show info message if business has no active hours */}
-                  {businessHours.every(hour => !hour.is_active) && (
-                    <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex">
-                        <div className="flex-shrink-0">
-                          <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <div className="ml-3">
-                          <h3 className="text-sm font-medium text-blue-800">
-                            Configura los horarios de tu negocio
-                          </h3>
-                          <div className="mt-2 text-sm text-blue-700">
-                            <p>
-                              Selecciona los días que tu negocio estará abierto y configura los horarios.
-                              Los clientes podrán ver esta información al agendar citas.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    {businessHours.map((hour) => (
-                    <div key={hour.day_of_week} className="border rounded-lg p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-24">
-                            <label className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={hour.is_active}
-                                onChange={(e) => updateDayHours(hour.day_of_week, 'is_active', e.target.checked)}
-                                className="rounded border-gray-300 bg-white text-green-600 focus:ring-green-500"
-                              />
-                              <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                                {DAYS_OF_WEEK[hour.day_of_week]}
-                              </span>
-                            </label>
-                          </div>
-
-                          {hour.is_active ? (
-                            <div className="flex items-center gap-4">
-                              <div className="flex items-center gap-2">
-                                <label className="text-sm" style={{ color: 'var(--text-muted)' }}>Abre:</label>
-                                <select
-                                  value={hour.open_time}
-                                  onChange={(e) => handleDropdownTimeChange(hour.day_of_week, 'open_time', e.target.value)}
-                                  className="rounded border border-gray-300 bg-white px-3 py-1 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors min-w-[100px]"
-                                >
-                                  {timeOptions.map((time) => (
-                                    <option key={time.value} value={time.value}>
-                                      {time.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <span style={{ color: 'var(--text-muted)' }}>a</span>
-                              <div className="flex items-center gap-2">
-                                <label className="text-sm" style={{ color: 'var(--text-muted)' }}>Cierra:</label>
-                                <select
-                                  value={hour.close_time}
-                                  onChange={(e) => handleDropdownTimeChange(hour.day_of_week, 'close_time', e.target.value)}
-                                  className="rounded border border-gray-300 bg-white px-3 py-1 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors min-w-[100px]"
-                                >
-                                  {timeOptions.map((time) => (
-                                    <option key={time.value} value={time.value}>
-                                      {time.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="italic" style={{ color: 'var(--text-muted)' }}>Cerrado</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Preview */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Vista Previa de Horarios</CardTitle>
-              <CardDescription>
-                Así aparecerán tus horarios a los clientes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {businessHours.map((hour) => (
-                  <div key={hour.day_of_week} className="flex justify-between items-center py-2 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
-                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {DAYS_OF_WEEK[hour.day_of_week]}
-                    </span>
-                    <span className={hour.is_active ? 'text-green-600' : ''} style={{ color: hour.is_active ? 'var(--accent)' : 'var(--text-muted)' }}>
-                      {hour.is_active
-                        ? `${hour.open_time} - ${hour.close_time}`
-                        : 'Cerrado'
-                      }
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Save Button */}
-          <div className="flex justify-center">
-            <Button
-              onClick={saveBusinessHours}
-              loading={isSaving}
-              variant="primary"
-              size="lg"
-            >
-              Guardar Horarios de Atención
-            </Button>
-          </div>
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-5">
+          <Link href={`/${businessName}/settings`}
+            className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E5EA' }}>
+            <svg className="w-4 h-4" style={{ color: '#6366F1' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <h1 className="text-xl font-bold" style={{ color: '#1C1C1E' }}>Horario</h1>
         </div>
+
+        {/* Quick actions */}
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setAllDays(true)}
+            className="flex-1 py-2 rounded-[10px] text-xs font-semibold"
+            style={{ backgroundColor: '#EEF2FF', color: '#6366F1' }}
+          >
+            Abrir todos
+          </button>
+          <button
+            onClick={() => setAllDays(false)}
+            className="flex-1 py-2 rounded-[10px] text-xs font-semibold"
+            style={{ backgroundColor: '#F2F2F7', color: '#8E8E93', border: '1px solid #E5E5EA' }}
+          >
+            Cerrar todos
+          </button>
+        </div>
+
+        {/* Days list */}
+        {loadingHours ? (
+          <div className="space-y-3">
+            {DAYS_OF_WEEK.map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl h-16 animate-pulse" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {businessHours.map(hour => (
+              <div key={hour.day_of_week} className="bg-white rounded-2xl p-4"
+                style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+                <div className="flex items-center gap-3">
+                  {/* Toggle */}
+                  <button
+                    onClick={() => updateDayHours(hour.day_of_week, 'is_active', !hour.is_active)}
+                    className="relative flex-shrink-0 w-11 h-6 rounded-full transition-all"
+                    style={{ backgroundColor: hour.is_active ? '#6366F1' : '#E5E5EA' }}
+                  >
+                    <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                      style={{ transform: hour.is_active ? 'translateX(20px)' : 'translateX(0)' }} />
+                  </button>
+
+                  {/* Day name */}
+                  <span className="text-sm font-semibold w-24 flex-shrink-0"
+                    style={{ color: hour.is_active ? '#1C1C1E' : '#8E8E93' }}>
+                    {DAYS_OF_WEEK[hour.day_of_week]}
+                  </span>
+
+                  {/* Times */}
+                  {hour.is_active ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <select
+                        value={hour.open_time}
+                        onChange={e => updateDayHours(hour.day_of_week, 'open_time', e.target.value)}
+                        className="flex-1 py-1.5 px-2 rounded-lg text-xs font-medium outline-none"
+                        style={{ backgroundColor: '#EEF2FF', color: '#6366F1', border: 'none' }}
+                      >
+                        {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <span className="text-xs" style={{ color: '#8E8E93' }}>–</span>
+                      <select
+                        value={hour.close_time}
+                        onChange={e => updateDayHours(hour.day_of_week, 'close_time', e.target.value)}
+                        className="flex-1 py-1.5 px-2 rounded-lg text-xs font-medium outline-none"
+                        style={{ backgroundColor: '#EEF2FF', color: '#6366F1', border: 'none' }}
+                      >
+                        {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  ) : (
+                    <span className="text-xs" style={{ color: '#C7C7CC' }}>Cerrado</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Preview */}
+        <div className="bg-white rounded-2xl p-4 mt-4" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <p className="text-xs font-semibold mb-3" style={{ color: '#8E8E93' }}>VISTA PREVIA</p>
+          {businessHours.map((h, i) => (
+            <div key={h.day_of_week}
+              className="flex items-center justify-between py-2"
+              style={{ borderBottom: i < businessHours.length - 1 ? '1px solid #F2F2F7' : 'none' }}>
+              <span className="text-xs font-medium" style={{ color: '#1C1C1E' }}>
+                {DAYS_OF_WEEK[h.day_of_week]}
+              </span>
+              <span className="text-xs" style={{ color: h.is_active ? '#6366F1' : '#C7C7CC' }}>
+                {h.is_active ? `${h.open_time} – ${h.close_time}` : 'Cerrado'}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Save button */}
+        <button
+          onClick={saveBusinessHours}
+          disabled={isSaving}
+          className="w-full mt-5 py-3.5 rounded-[14px] text-sm font-semibold text-white transition-all"
+          style={{ backgroundColor: isSaving ? '#A5B4FC' : '#6366F1' }}
+        >
+          {isSaving ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
+                style={{ borderTopColor: 'white', borderRightColor: 'white' }} />
+              Guardando...
+            </span>
+          ) : 'Guardar horarios'}
+        </button>
       </div>
     </div>
   )
