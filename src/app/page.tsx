@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { motion } from 'motion/react';
+import Image from 'next/image';
+import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 import BlurText from '@/components/ui/BlurText';
 
 // WebGL components — client-only (no SSR)
@@ -52,9 +53,105 @@ const FadeIn = ({
   </motion.div>
 );
 
+// ─── How It Works 3D section ──────────────────────────────────────────────────
+function HowItWorks3D() {
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  const rawX = useMotionValue(0);
+  const rawY = useMotionValue(0);
+
+  const springX = useSpring(rawX, { stiffness: 60, damping: 20 });
+  const springY = useSpring(rawY, { stiffness: 60, damping: 20 });
+
+  const rotateX = useTransform(springY, [-1, 1], [10, -10]);
+  const rotateY = useTransform(springX, [-1, 1], [-12, 12]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = sectionRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    rawX.set(((e.clientX - rect.left) / rect.width) * 2 - 1);
+    rawY.set(((e.clientY - rect.top) / rect.height) * 2 - 1);
+  };
+  const handleMouseLeave = () => { rawX.set(0); rawY.set(0); };
+
+  const zDepths = [0, 40, 80];
+
+  return (
+    <div
+      ref={sectionRef}
+      className="relative z-10 max-w-6xl mx-auto px-6 py-28"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ perspective: '1000px' }}
+    >
+      {/* Header — fixed, no tilt */}
+      <FadeIn className="text-center">
+        <p className="text-xs font-semibold uppercase tracking-widest mb-4"
+          style={{ color: '#818CF8' }}>Proceso</p>
+      </FadeIn>
+      <FadeUp delay={0.05} className="text-center">
+        <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">En tres pasos</h2>
+      </FadeUp>
+      <FadeUp delay={0.1} className="text-center">
+        <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed"
+          style={{ color: 'rgba(255,255,255,0.5)' }}>
+          Desde la configuración hasta el primer cliente que reserva, todo fluye solo.
+        </p>
+      </FadeUp>
+
+      {/* 3D tilt wrapper */}
+      <motion.div
+        style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }}
+        className="grid grid-cols-1 md:grid-cols-3 gap-8"
+      >
+        {steps.map((s, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 32 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: i * 0.12 }}
+            style={{
+              transform: `translateZ(${zDepths[i]}px)`,
+              transformStyle: 'preserve-3d',
+            }}
+          >
+            {/* Card with depth shadow */}
+            <div
+              className="rounded-2xl p-6"
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(99,102,241,0.2)',
+                backdropFilter: 'blur(8px)',
+                boxShadow: `0 ${8 + i * 8}px ${24 + i * 16}px rgba(0,0,0,0.4), 0 0 0 1px rgba(99,102,241,0.08)`,
+              }}
+            >
+              <div
+                className="w-10 h-10 rounded-2xl flex items-center justify-center mb-5 text-sm font-bold"
+                style={{
+                  backgroundColor: '#6366F1',
+                  color: '#fff',
+                  boxShadow: `0 0 ${16 + i * 8}px rgba(99,102,241,${0.4 + i * 0.1})`,
+                }}
+              >
+                {s.n}
+              </div>
+              <h3 className="text-base font-semibold mb-2 text-white">{s.title}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                {s.desc}
+              </p>
+            </div>
+          </motion.div>
+        ))}
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Feature data ─────────────────────────────────────────────────────────────
 const features = [
   {
+    image: '/images/citas.png',
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5"
@@ -65,6 +162,7 @@ const features = [
     desc: 'Tus clientes agendan desde su teléfono en segundos. Sin apps que descargar, sin llamadas.'
   },
   {
+    image: '/images/cards.png',
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5"
@@ -75,6 +173,7 @@ const features = [
     desc: 'La tarjeta NFC lleva a tus clientes directo a tu negocio digital. Instantáneo.'
   },
   {
+    image: '/images/panel.png',
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5"
@@ -267,14 +366,22 @@ export default function Home() {
           </div>
 
           {/* Main headline */}
-          <BlurText
-            text="Empieza a ahorrar tiempo."
-            animateBy="words"
-            direction="top"
-            delay={120}
-            stepDuration={0.5}
-            className="text-5xl md:text-7xl font-bold tracking-tight text-white leading-tight justify-center mb-6"
-          />
+          <div className="flex flex-wrap items-baseline justify-center gap-x-4 mb-6
+                          text-5xl md:text-7xl font-bold tracking-tight leading-tight">
+            <BlurText text="Empieza a" animateBy="words" direction="top"
+              delay={120} stepDuration={0.5}
+              className="text-white justify-center" />
+            <span style={{ color: '#6366F1' }}>
+              <BlurText text="ahorrar" animateBy="words" direction="top"
+                delay={360} stepDuration={0.5}
+                className="justify-center" />
+            </span>
+            <span style={{ textDecoration: 'underline', textDecorationColor: '#ffffff', textUnderlineOffset: '6px', textDecorationThickness: '3px' }}>
+              <BlurText text="tiempo." animateBy="words" direction="top"
+                delay={480} stepDuration={0.5}
+                className="text-white justify-center" />
+            </span>
+          </div>
 
           {/* Subtitle */}
           <BlurText
@@ -356,29 +463,31 @@ export default function Home() {
             </p>
           </FadeUp>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="flex flex-col gap-24">
             {features.map((f, i) => (
-              <FadeUp key={i} delay={i * 0.1}>
-                <div className="rounded-2xl p-8 transition-all duration-300 h-full"
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    backdropFilter: 'blur(12px)',
-                  }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(99,102,241,0.12)';
-                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(99,102,241,0.4)';
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(255,255,255,0.05)';
-                    (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.1)';
-                  }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-5"
-                    style={{ backgroundColor: 'rgba(99,102,241,0.2)', color: '#818CF8' }}>
-                    {f.icon}
+              <FadeUp key={i} delay={0.05}>
+                <div className={`flex flex-col ${i % 2 === 0 ? 'md:flex-row' : 'md:flex-row-reverse'} items-center gap-12 md:gap-16`}>
+                  {/* Image */}
+                  <div className="w-full md:w-3/5 rounded-2xl overflow-hidden flex-shrink-0"
+                    style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Image
+                      src={f.image}
+                      alt={f.title}
+                      width={0}
+                      height={0}
+                      sizes="(max-width: 768px) 100vw, 60vw"
+                      className="w-full h-auto block"
+                    />
                   </div>
-                  <h3 className="text-base font-semibold mb-2 text-white">{f.title}</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{f.desc}</p>
+                  {/* Text */}
+                  <div className="w-full md:w-2/5 flex flex-col">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-6"
+                      style={{ backgroundColor: 'rgba(99,102,241,0.2)', color: '#818CF8' }}>
+                      {f.icon}
+                    </div>
+                    <h3 className="text-2xl md:text-3xl font-bold mb-4 text-white">{f.title}</h3>
+                    <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>{f.desc}</p>
+                  </div>
                 </div>
               </FadeUp>
             ))}
@@ -405,40 +514,7 @@ export default function Home() {
           />
         </div>
 
-        <div className="relative z-10 max-w-6xl mx-auto px-6 py-28">
-          <FadeIn className="text-center">
-            <p className="text-xs font-semibold uppercase tracking-widest mb-4"
-              style={{ color: '#818CF8' }}>
-              Proceso
-            </p>
-          </FadeIn>
-          <FadeUp delay={0.05} className="text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">
-              En tres pasos
-            </h2>
-          </FadeUp>
-          <FadeUp delay={0.1} className="text-center">
-            <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed"
-              style={{ color: 'rgba(255,255,255,0.5)' }}>
-              Desde la configuración hasta el primer cliente que reserva, todo fluye solo.
-            </p>
-          </FadeUp>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {steps.map((s, i) => (
-              <FadeUp key={i} delay={i * 0.12}>
-                <div>
-                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-5 text-sm font-bold"
-                    style={{ backgroundColor: '#6366F1', color: '#fff', boxShadow: '0 0 20px rgba(99,102,241,0.5)' }}>
-                    {s.n}
-                  </div>
-                  <h3 className="text-base font-semibold mb-2 text-white">{s.title}</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{s.desc}</p>
-                </div>
-              </FadeUp>
-            ))}
-          </div>
-        </div>
+        <HowItWorks3D />
       </section>
 
       {/* ── Pricing ────────────────────────────────────────────────────────── */}
