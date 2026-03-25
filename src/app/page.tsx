@@ -8,6 +8,7 @@ import BlurText from '@/components/ui/BlurText';
 // WebGL components — client-only (no SSR)
 const Prism = dynamic(() => import('@/components/ui/Prism'), { ssr: false });
 const Particles = dynamic(() => import('@/components/ui/Particles'), { ssr: false });
+const GridScan = dynamic(() => import('@/components/ui/GridScan'), { ssr: false });
 
 // Reusable scroll-reveal wrapper
 const FadeUp = ({
@@ -324,10 +325,10 @@ export default function Home() {
         {/* Particles background */}
         <div className="absolute inset-0 pointer-events-none">
           <Particles
-            particleCount={160}
-            particleSpread={12}
-            speed={0.06}
-            particleBaseSize={80}
+            particleCount={200}
+            particleSpread={10}
+            speed={0.01}
+            particleBaseSize={100}
             particleColors={['#6366F1', '#818CF8', '#A5B4FC', '#ffffff']}
             alphaParticles={true}
             sizeRandomness={0.8}
@@ -386,21 +387,39 @@ export default function Home() {
       </section>
 
       {/* ── How it works ───────────────────────────────────────────────────── */}
-      <section id="how-it-works" style={{ backgroundColor: '#F2F2F7' }}>
-        <div className="max-w-6xl mx-auto px-6 py-28">
+      <section id="how-it-works" className="relative overflow-hidden" style={{ backgroundColor: '#06040f' }}>
+        {/* GridScan background */}
+        <div className="absolute inset-0 pointer-events-none">
+          <GridScan
+            linesColor="#2d1f5e"
+            scanColor="#6366F1"
+            scanOpacity={0.7}
+            gridScale={0.09}
+            lineThickness={1.2}
+            scanGlow={0.8}
+            scanSoftness={2.5}
+            scanDirection="pingpong"
+            scanDuration={2.5}
+            scanDelay={1.0}
+            noiseIntensity={0.008}
+          />
+        </div>
+
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-28">
           <FadeIn className="text-center">
             <p className="text-xs font-semibold uppercase tracking-widest mb-4"
-              style={{ color: '#6366F1' }}>
+              style={{ color: '#818CF8' }}>
               Proceso
             </p>
           </FadeIn>
           <FadeUp delay={0.05} className="text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1C1C1E' }}>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">
               En tres pasos
             </h2>
           </FadeUp>
           <FadeUp delay={0.1} className="text-center">
-            <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed" style={{ color: '#8E8E93' }}>
+            <p className="max-w-lg mx-auto mb-16 text-sm leading-relaxed"
+              style={{ color: 'rgba(255,255,255,0.5)' }}>
               Desde la configuración hasta el primer cliente que reserva, todo fluye solo.
             </p>
           </FadeUp>
@@ -411,15 +430,15 @@ export default function Home() {
                 <div className="relative">
                   {i < steps.length - 1 && (
                     <div className="hidden md:block absolute top-5 left-full w-full h-px -translate-x-4"
-                      style={{ background: 'linear-gradient(to right, #E5E5EA, transparent)', zIndex: 0 }} />
+                      style={{ background: 'linear-gradient(to right, rgba(99,102,241,0.4), transparent)', zIndex: 0 }} />
                   )}
                   <div className="relative z-10">
                     <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-5 text-sm font-bold"
-                      style={{ backgroundColor: '#6366F1', color: '#fff' }}>
+                      style={{ backgroundColor: '#6366F1', color: '#fff', boxShadow: '0 0 20px rgba(99,102,241,0.5)' }}>
                       {s.n}
                     </div>
-                    <h3 className="text-base font-semibold mb-2" style={{ color: '#1C1C1E' }}>{s.title}</h3>
-                    <p className="text-sm leading-relaxed" style={{ color: '#8E8E93' }}>{s.desc}</p>
+                    <h3 className="text-base font-semibold mb-2 text-white">{s.title}</h3>
+                    <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{s.desc}</p>
                   </div>
                 </div>
               </FadeUp>
