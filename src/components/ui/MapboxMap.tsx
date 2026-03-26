@@ -66,6 +66,9 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
 
       mapboxgl.accessToken = MAPBOX_TOKEN
 
+      // Cheaper rendering on touch devices (iPhone/Android)
+      const isMobile = 'ontouchstart' in window
+
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: 'mapbox://styles/mapbox/standard',
@@ -73,7 +76,7 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
         zoom: 1.5,
         pitch: 0,
         bearing: 0,
-        antialias: true,
+        antialias: !isMobile,
         attributionControl: true,
       })
 
@@ -156,14 +159,27 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
             { duration: 680, easing: 'ease-out', fill: 'forwards' }
           )
 
-          // Drone orbit — rotates 15°/s (~24s full lap)
+          // Drone orbit — rotates 15°/s, stops after 1 full lap (~24s)
+          // On mobile: throttled to ~15fps (setBearing every 67ms) to reduce GPU drain
+          const ORBIT_THROTTLE_MS = isMobile ? 33 : 16
           let lastTime: number | null = null
+          let lastSetTime: number | null = null
           let bearing = map.getBearing()
+          let totalRotated = 0
           const orbit = (time: number) => {
             if (cancelled) return
-            if (lastTime !== null) bearing += (15 * (time - lastTime)) / 1000
+            if (lastTime !== null) {
+              const delta = time - lastTime
+              const step = (15 * delta) / 1000
+              bearing += step
+              totalRotated += step
+              if (totalRotated >= 360) return // stop after 1 full lap
+              if (lastSetTime === null || time - lastSetTime >= ORBIT_THROTTLE_MS) {
+                map.setBearing(bearing)
+                lastSetTime = time
+              }
+            }
             lastTime = time
-            map.setBearing(bearing)
             droneFrame = requestAnimationFrame(orbit)
           }
           droneFrame = requestAnimationFrame(orbit)
