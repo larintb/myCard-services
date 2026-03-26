@@ -1,34 +1,15 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { MapboxMap } from '@/components/ui/MapboxMap'
+import { MapboxMapEditor } from '@/components/ui/MapboxMapEditor'
+import { AddressAutocomplete, AddressDetails } from '@/components/ui/AddressAutocomplete'
 import { ImageUploader } from '@/components/ui/ImageUploader'
 import { generateBusinessSlug } from '@/utils/slug'
 import { BusinessAdminRegistrationForm, User, Business } from '@/types'
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
 const TOTAL_STEPS = 8
 
-interface AddressSuggestion {
-  id: string
-  place_name: string
-  center: [number, number]
-  text: string
-  address?: string
-  context?: Array<{ id: string; text: string }>
-}
-
-interface AddressDetails {
-  fullAddress: string
-  latitude?: number
-  longitude?: number
-  city?: string
-  state?: string
-  country?: string
-  postalCode?: string
-  placeId?: string
-}
 
 interface BusinessRegistrationSuccessData {
   success: boolean
@@ -42,24 +23,6 @@ interface BusinessRegistrationProps {
   onSuccess: (data: BusinessRegistrationSuccessData) => void
 }
 
-function parseFeature(f: AddressSuggestion): AddressDetails {
-  const d: AddressDetails = {
-    fullAddress: f.place_name,
-    placeId: f.id,
-    longitude: f.center[0],
-    latitude: f.center[1],
-  }
-  if (f.context) {
-    for (const ctx of f.context) {
-      const type = ctx.id.split('.')[0]
-      if (type === 'place' || type === 'locality') d.city = ctx.text
-      else if (type === 'region') d.state = ctx.text
-      else if (type === 'country') d.country = ctx.text
-      else if (type === 'postcode') d.postalCode = ctx.text
-    }
-  }
-  return d
-}
 
 
 export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrationProps) {
@@ -88,13 +51,6 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
   const [focusedField, setFocusedField] = useState<string | null>(null)
   const [origin, setOrigin] = useState('')
 
-  // Address autocomplete state
-  const [addressQuery, setAddressQuery] = useState('')
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([])
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [addressLoading, setAddressLoading] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const addressContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setOrigin(window.location.origin) }, [])
 
@@ -113,52 +69,9 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
     }
   }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close address dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (addressContainerRef.current && !addressContainerRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  const fetchSuggestions = useCallback(async (query: string) => {
-    if (!MAPBOX_TOKEN || query.length < 1) { setSuggestions([]); return }
-    setAddressLoading(true)
-    try {
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&types=address&limit=5&language=es`
-      const res = await fetch(url)
-      const data = await res.json()
-      setSuggestions(data.features ?? [])
-      setDropdownOpen(true)
-    } catch {
-      setSuggestions([])
-    } finally {
-      setAddressLoading(false)
-    }
-  }, [])
-
-  const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const q = e.target.value
-    setAddressQuery(q)
-    if (!q.trim()) {
-      setFormData(prev => ({ ...prev, address: '' }))
-      setAddressDetails(null)
-    }
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (q.trim().length === 0) { setSuggestions([]); setDropdownOpen(false); return }
-    debounceRef.current = setTimeout(() => fetchSuggestions(q), 300)
-  }
-
-  const handleAddressSelect = (feature: AddressSuggestion) => {
-    const details = parseFeature(feature)
-    setAddressQuery(feature.place_name)
-    setFormData(prev => ({ ...prev, address: feature.place_name }))
+  const handleAddressSelect = (details: AddressDetails) => {
+    setFormData(prev => ({ ...prev, address: details.fullAddress }))
     setAddressDetails(details)
-    setSuggestions([])
-    setDropdownOpen(false)
     if (errors.address) setErrors(prev => ({ ...prev, address: '' }))
   }
 
@@ -557,63 +470,23 @@ export function BusinessRegistrationForm({ token, onSuccess }: BusinessRegistrat
               <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>¿Dónde está tu negocio?</p>
             </div>
 
-            {/* Address autocomplete */}
-            <div ref={addressContainerRef} className="relative">
+            <div>
               <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#8E8E93' }}>DIRECCIÓN</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={addressQuery}
-                  onChange={handleAddressInput}
-                  onFocus={() => { setFocusedField('address'); if (suggestions.length > 0) setDropdownOpen(true) }}
-                  onBlur={() => setFocusedField(null)}
-                  placeholder="Busca tu dirección..."
-                  autoFocus
-                  autoComplete="off"
-                  className="w-full px-4 py-3.5 rounded-xl text-base font-medium outline-none transition-all"
-                  style={inputStyle('address', errors.address)}
-                />
-                {addressLoading && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
-                      style={{ borderTopColor: '#6366F1', borderRightColor: '#6366F1' }} />
-                  </div>
-                )}
-              </div>
+              <AddressAutocomplete
+                onAddressSelect={handleAddressSelect}
+                placeholder="Busca tu dirección..."
+                initialValue={formData.address}
+                className={errors.address ? 'ring-1 ring-red-400 rounded-xl' : ''}
+              />
               {errors.address && <p className="text-xs mt-1" style={{ color: '#FF3B30' }}>{errors.address}</p>}
-
-              {/* Suggestions dropdown */}
-              {dropdownOpen && suggestions.length > 0 && (
-                <ul className="absolute z-50 w-full mt-1 bg-white rounded-2xl overflow-hidden"
-                  style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #E5E5EA' }}>
-                  {suggestions.map((s, i) => (
-                    <li
-                      key={s.id}
-                      onMouseDown={() => handleAddressSelect(s)}
-                      className="px-4 py-3 cursor-pointer"
-                      style={{
-                        borderBottom: i < suggestions.length - 1 ? '1px solid #F2F2F7' : 'none',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F2F2F7')}
-                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                    >
-                      <p className="text-sm font-semibold" style={{ color: '#1C1C1E' }}>
-                        {s.address ? `${s.address} ${s.text}` : s.text}
-                      </p>
-                      <p className="text-xs mt-0.5 truncate" style={{ color: '#8E8E93' }}>{s.place_name}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
 
-            {/* Map preview */}
-            {formData.address && (
-              <div className="rounded-2xl overflow-hidden" style={{ height: 200 }}>
-                <MapboxMap
-                  address={formData.address}
-                  businessName={formData.business_name || 'Tu negocio'}
-                  className="w-full h-full"
+            {addressDetails?.longitude && addressDetails?.latitude && (
+              <div style={{ height: 200 }}>
+                <MapboxMapEditor
+                  coords={[addressDetails.longitude, addressDetails.latitude]}
+                  onCoordsChange={(lng, lat) => setAddressDetails(prev => prev ? { ...prev, longitude: lng, latitude: lat } : prev)}
+                  className="h-full w-full"
                 />
               </div>
             )}

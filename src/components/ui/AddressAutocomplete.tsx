@@ -95,7 +95,7 @@ export function AddressAutocomplete({
     setIsLoading(true)
     try {
       const encoded = encodeURIComponent(query)
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&types=address&limit=5&language=es`
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&types=address&limit=5&language=es&country=MX`
       const res = await fetch(url)
       const data = await res.json()
       setSuggestions(data.features ?? [])

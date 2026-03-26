@@ -7,7 +7,7 @@ import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 import BlurText from '@/components/ui/BlurText';
 
 // WebGL components — client-only (no SSR)
-const Prism = dynamic(() => import('@/components/ui/Prism'), { ssr: false });
+const Silk = dynamic(() => import('@/components/ui/Silk'), { ssr: false });
 const Particles = dynamic(() => import('@/components/ui/Particles'), { ssr: false });
 const GridScan = dynamic(() => import('@/components/ui/GridScan'), { ssr: false });
 
@@ -336,17 +336,14 @@ export default function Home() {
       <section ref={heroRef} className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
         style={{ backgroundColor: '#000000' }}>
 
-        {/* Prism background — fills entire section */}
+        {/* Silk background — fills entire section */}
         <div className="absolute inset-0">
-          <Prism
-            animationType="rotate"
-            timeScale={0.4}
-            scale={2.5}
-            glow={1.2}
-            bloom={1.1}
-            noise={0.18}
-            colorFrequency={0.25}
-            transparent={true}
+          <Silk
+            speed={3}
+            scale={1.2}
+            color="#6366F1"
+            noiseIntensity={1.5}
+            rotation={0}
           />
         </div>
 

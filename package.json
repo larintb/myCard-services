@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.57.4",
     "@types/bcryptjs": "^2.4.6",
     "aos": "^2.3.4",
