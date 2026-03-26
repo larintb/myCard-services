@@ -343,114 +343,118 @@ export function ClientAppointmentInterface({
   /* ── Screens ──────────────────────────────────────────────────── */
 
   const renderHome = () => (
-    <div className="screen-enter px-4 pt-6 pb-6 space-y-4">
-      {/* Business card */}
+    <div className="screen-enter">
+      {/* Hero */}
       <div
-        className="bg-white rounded-2xl p-5 flex items-center gap-4"
-        style={{ boxShadow: C.shadow }}
+        className="px-5 pt-10 pb-8 flex flex-col items-center text-center"
+        style={{ background: `linear-gradient(160deg, ${C.accent} 0%, #818CF8 100%)` }}
       >
-        <BusinessLogo size={56} />
-        <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-bold truncate" style={{ color: C.textPrimary }}>
-            {business.business_name}
-          </h2>
-          {business.address && (
-            <p className="text-xs mt-0.5 truncate" style={{ color: C.textSecondary }}>
+        <BusinessLogo size={68} />
+        <h2 className="text-xl font-bold mt-4 text-white">{business.business_name}</h2>
+        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.75)' }}>
+          Hola, {user.first_name}
+        </p>
+        {business.address && (
+          <div className="flex items-center gap-1.5 mt-2">
+            <svg className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.6)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <p className="text-xs truncate max-w-[220px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
               {business.address}
             </p>
-          )}
-          <span
-            className="inline-block mt-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
-            style={{ backgroundColor: C.accentLight, color: C.accent }}
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 pt-4 pb-6 space-y-3">
+        {/* Primary CTA */}
+        <button
+          onClick={() => setCurrentScreen('services')}
+          className="w-full rounded-2xl p-4 flex items-center justify-between active:opacity-90 transition-opacity text-white"
+          style={{ backgroundColor: C.accent, boxShadow: C.shadow }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div className="text-left">
+              <p className="font-bold text-sm">Agendar cita</p>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                {services.length} servicio{services.length !== 1 ? 's' : ''} disponible{services.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <svg className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.6)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        {/* Secondary cards */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setCurrentScreen('appointments')}
+            className="bg-white rounded-2xl p-4 text-left active:opacity-80 transition-opacity"
+            style={{ boxShadow: C.shadow }}
           >
-            Hola, {user.first_name}
-          </span>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+              style={{ backgroundColor: C.accentLight }}>
+              <svg className="w-5 h-5" style={{ color: C.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>Mis citas</p>
+            <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
+              {appointments.length === 0 ? 'Sin citas' : `${appointments.length} programada${appointments.length !== 1 ? 's' : ''}`}
+            </p>
+          </button>
+
+          <button
+            onClick={() => setCurrentScreen('business-info')}
+            className="bg-white rounded-2xl p-4 text-left active:opacity-80 transition-opacity"
+            style={{ boxShadow: C.shadow }}
+          >
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+              style={{ backgroundColor: '#F0F9FF' }}>
+              <svg className="w-5 h-5" style={{ color: '#0EA5E9' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>Info</p>
+            <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>Detalles del negocio</p>
+          </button>
         </div>
+
+        {/* Next appointment banner */}
+        {appointments.filter(a => a.status === 'confirmed' || a.status === 'pending').length > 0 && (
+          <div
+            className="bg-white rounded-2xl p-4"
+            style={{ boxShadow: C.shadow, borderLeft: `4px solid ${C.accent}` }}
+          >
+            <p className="text-xs font-semibold mb-1" style={{ color: C.accent }}>PRÓXIMA CITA</p>
+            {(() => {
+              const next = appointments.find(a => a.status === 'confirmed' || a.status === 'pending')!
+              return (
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>
+                    {getServiceData(next)?.name || 'Servicio'}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
+                    {parseDateString(next.appointment_date).toLocaleDateString('es-MX', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    {' · '}{formatTime(next.appointment_time)}
+                  </p>
+                </div>
+              )
+            })()}
+          </div>
+        )}
       </div>
-
-      {/* Primary action */}
-      <button
-        onClick={() => setCurrentScreen('services')}
-        className="w-full rounded-2xl p-5 text-white flex items-center justify-between active:opacity-90 transition-opacity"
-        style={{ backgroundColor: C.accent, boxShadow: C.shadow }}
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div className="text-left">
-            <p className="font-bold text-base">Agendar cita</p>
-            <p className="text-sm text-white/70">Ver servicios disponibles</p>
-          </div>
-        </div>
-        <svg className="w-5 h-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-
-      {/* Secondary cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setCurrentScreen('appointments')}
-          className="bg-white rounded-2xl p-4 text-left active:opacity-80 transition-opacity"
-          style={{ boxShadow: C.shadow }}
-        >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-            style={{ backgroundColor: C.accentLight }}>
-            <svg className="w-5 h-5" style={{ color: C.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>Mis citas</p>
-          <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
-            {appointments.length === 0 ? 'Sin citas' : `${appointments.length} programada${appointments.length !== 1 ? 's' : ''}`}
-          </p>
-        </button>
-
-        <button
-          onClick={() => setCurrentScreen('business-info')}
-          className="bg-white rounded-2xl p-4 text-left active:opacity-80 transition-opacity"
-          style={{ boxShadow: C.shadow }}
-        >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-            style={{ backgroundColor: '#F0F9FF' }}>
-            <svg className="w-5 h-5" style={{ color: '#0EA5E9' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>Info</p>
-          <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>Detalles del negocio</p>
-        </button>
-      </div>
-
-      {/* Next appointment banner */}
-      {appointments.filter(a => a.status === 'confirmed' || a.status === 'pending').length > 0 && (
-        <div
-          className="bg-white rounded-2xl p-4"
-          style={{ boxShadow: C.shadow, borderLeft: `4px solid ${C.accent}` }}
-        >
-          <p className="text-xs font-semibold mb-1" style={{ color: C.accent }}>PRÓXIMA CITA</p>
-          {(() => {
-            const next = appointments.find(a => a.status === 'confirmed' || a.status === 'pending')!
-            return (
-              <div>
-                <p className="font-semibold text-sm" style={{ color: C.textPrimary }}>
-                  {getServiceData(next)?.name || 'Servicio'}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
-                  {parseDateString(next.appointment_date).toLocaleDateString('es-MX', { weekday: 'long', month: 'long', day: 'numeric' })}
-                  {' · '}{formatTime(next.appointment_time)}
-                </p>
-              </div>
-            )
-          })()}
-        </div>
-      )}
     </div>
   )
 
@@ -675,96 +679,179 @@ export function ClientAppointmentInterface({
     </div>
   )
 
-  const renderBusinessInfo = () => (
-    <div className="screen-enter px-4 pt-6 pb-6">
-      <div className="flex items-center gap-3 mb-5">
-        <BackButton onPress={() => setCurrentScreen('home')} />
-        <h2 className="text-xl font-bold" style={{ color: C.textPrimary }}>Información</h2>
-      </div>
+  const renderBusinessInfo = () => {
+    const todayStatus = (() => {
+      if (loadingHours || businessHours.length === 0) return null
+      const now = new Date()
+      const todayHours = businessHours.find(h => h.day_of_week === now.getDay() && h.is_active)
+      if (!todayHours) return { isOpen: false, label: 'Cerrado hoy' }
+      const [openH, openM] = todayHours.open_time.split(':').map(Number)
+      const [closeH, closeM] = todayHours.close_time.split(':').map(Number)
+      const cur = now.getHours() * 60 + now.getMinutes()
+      if (cur >= openH * 60 + openM && cur < closeH * 60 + closeM) {
+        return { isOpen: true, label: `Cierra a las ${formatTime(todayHours.close_time)}` }
+      }
+      return { isOpen: false, label: `Abre a las ${formatTime(todayHours.open_time)}` }
+    })()
 
-      <div className="space-y-3">
+    return (
+      <div className="screen-enter">
         {/* Header */}
-        <div className="bg-white rounded-2xl p-5 flex items-center gap-4" style={{ boxShadow: C.shadow }}>
-          <BusinessLogo size={52} />
-          <div>
-            <h3 className="font-bold text-base" style={{ color: C.textPrimary }}>{business.business_name}</h3>
-            {business.phone && (
-              <p className="text-sm mt-0.5" style={{ color: C.textSecondary }}>{business.phone}</p>
-            )}
-          </div>
+        <div className="flex items-center gap-3 px-4 pt-6 pb-4">
+          <BackButton onPress={() => setCurrentScreen('home')} />
+          <h2 className="text-xl font-bold" style={{ color: C.textPrimary }}>Información</h2>
         </div>
 
-        {/* Contact */}
-        {business.address && (
-          <div className="bg-white rounded-2xl p-5" style={{ boxShadow: C.shadow }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: C.textSecondary }}>DIRECCIÓN</p>
-            <div className="flex items-start gap-2">
-              <svg className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: C.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <p className="text-sm" style={{ color: C.textPrimary }}>{business.address}</p>
+        <div className="px-4 pb-6 space-y-3">
+          {/* Hero card */}
+          <div
+            className="rounded-2xl p-5 flex items-center gap-4"
+            style={{ background: `linear-gradient(135deg, ${C.accent} 0%, #818CF8 100%)`, boxShadow: C.shadow }}
+          >
+            <BusinessLogo size={56} />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-lg text-white truncate">{business.business_name}</h3>
+              {business.phone && (
+                <a href={`tel:${business.phone}`} className="flex items-center gap-1.5 mt-1.5">
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.7)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  <span className="text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>{business.phone}</span>
+                </a>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Map */}
-        {business.address && (
+          {/* Address */}
+          {business.address && (
+            <div className="bg-white rounded-2xl px-4 py-4 flex items-start gap-3" style={{ boxShadow: C.shadow }}>
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: C.accentLight }}
+              >
+                <svg className="w-4 h-4" style={{ color: C.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-xs font-semibold mb-0.5" style={{ color: C.textSecondary }}>DIRECCIÓN</p>
+                <p className="text-sm leading-relaxed" style={{ color: C.textPrimary }}>{business.address}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Map */}
+          {business.address && (
+            <div className="rounded-2xl overflow-hidden" style={{ boxShadow: C.shadow }}>
+              <MapboxMap
+                key={`${business.address}-${business.business_name}`}
+                address={business.address}
+                businessName={business.business_name}
+                className="h-56 w-full"
+              />
+            </div>
+          )}
+
+          {/* Business hours */}
           <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: C.shadow }}>
-            <MapboxMap
-              key={`${business.address}-${business.business_name}`}
-              address={business.address}
-              businessName={business.business_name}
-              className="h-56 w-full"
-            />
-          </div>
-        )}
+            {/* Section header */}
+            <div
+              className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: `1px solid ${C.separator}` }}
+            >
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" style={{ color: C.textSecondary }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm font-semibold" style={{ color: C.textPrimary }}>Horario de atención</p>
+              </div>
+              {todayStatus && (
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: todayStatus.isOpen ? '#22C55E' : '#EF4444' }}
+                  />
+                  <span
+                    className="text-xs font-medium"
+                    style={{ color: todayStatus.isOpen ? '#15803D' : '#DC2626' }}
+                  >
+                    {todayStatus.isOpen ? 'Abierto' : 'Cerrado'} · {todayStatus.label}
+                  </span>
+                </div>
+              )}
+            </div>
 
-        {/* Business hours */}
-        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: C.shadow }}>
-          <p className="text-xs font-semibold mb-3" style={{ color: C.textSecondary }}>HORARIOS</p>
-          {loadingHours ? (
-            <p className="text-sm" style={{ color: C.textSecondary }}>Cargando...</p>
-          ) : businessHours.length > 0 ? (
-            <div className="space-y-1">
-              {businessHours.map(hour => {
+            {/* Rows */}
+            {loadingHours ? (
+              <div className="px-5 py-6 flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
+                  style={{ borderTopColor: C.accent }} />
+                <span className="text-sm" style={{ color: C.textSecondary }}>Cargando...</span>
+              </div>
+            ) : businessHours.length > 0 ? (
+              businessHours.map((hour, index) => {
                 const todayRow = isToday(hour.day_of_week)
+                const isLast = index === businessHours.length - 1
                 return (
                   <div
                     key={hour.id}
-                    className="flex items-center justify-between py-2.5 px-3 rounded-xl"
-                    style={{ backgroundColor: todayRow ? C.accentLight : 'transparent' }}
+                    className="flex items-center justify-between px-5 py-3"
+                    style={{
+                      backgroundColor: todayRow ? C.accentLight : 'transparent',
+                      borderBottom: isLast ? 'none' : `1px solid ${C.separator}`,
+                    }}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium w-24" style={{ color: todayRow ? C.accent : C.textPrimary }}>
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: todayRow ? C.accent : 'transparent', border: todayRow ? 'none' : `1px solid ${C.separator}` }}
+                      />
+                      <span
+                        className="text-sm w-[90px]"
+                        style={{ color: todayRow ? C.accent : C.textPrimary, fontWeight: todayRow ? 600 : 400 }}
+                      >
                         {getDayName(hour.day_of_week)}
                       </span>
                       {todayRow && (
-                        <span className="text-xs font-bold px-1.5 py-0.5 rounded-full text-white"
-                          style={{ backgroundColor: C.accent }}>
-                          Hoy
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: C.accent }}
+                        >
+                          HOY
                         </span>
                       )}
                     </div>
-                    <span className="text-sm font-medium" style={{ color: todayRow ? C.accent : C.textSecondary }}>
-                      {hour.is_active ? `${formatTime(hour.open_time)} – ${formatTime(hour.close_time)}` : 'Cerrado'}
+                    <span
+                      className="text-sm tabular-nums"
+                      style={{
+                        color: !hour.is_active ? '#C7C7CC' : todayRow ? C.accent : C.textSecondary,
+                        fontWeight: todayRow ? 600 : 400,
+                      }}
+                    >
+                      {hour.is_active
+                        ? `${formatTime(hour.open_time)} – ${formatTime(hour.close_time)}`
+                        : 'Cerrado'}
                     </span>
                   </div>
                 )
-              })}
-            </div>
-          ) : (
-            <p className="text-sm" style={{ color: C.textSecondary }}>Sin horarios configurados</p>
-          )}
-        </div>
+              })
+            ) : (
+              <div className="px-5 py-4">
+                <p className="text-sm" style={{ color: C.textSecondary }}>Sin horarios configurados</p>
+              </div>
+            )}
+          </div>
 
-        <PrimaryButton className="w-full" onClick={() => setCurrentScreen('services')}>
-          Agendar cita
-        </PrimaryButton>
+          <PrimaryButton className="w-full" onClick={() => setCurrentScreen('services')}>
+            Agendar cita
+          </PrimaryButton>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderConfirmation = () => (
     <div className="screen-enter flex flex-col items-center justify-center min-h-[60vh] px-4 pt-6 pb-6">

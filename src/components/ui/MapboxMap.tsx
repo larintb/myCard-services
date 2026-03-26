@@ -21,11 +21,12 @@ async function geocodeAddress(address: string): Promise<[number, number] | null>
     const data = await res.json()
     const feature = data.features?.[0]
     if (!feature) return null
-    return feature.center as [number, number] // [lng, lat]
+    return feature.center as [number, number]
   } catch {
     return null
   }
 }
+
 
 export function MapboxMap({ address, businessName, className = '' }: MapboxMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -46,6 +47,7 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
     }
 
     let cancelled = false
+    let droneFrame: number | null = null
 
     const initMap = async () => {
       const coords = await geocodeAddress(address)
@@ -57,7 +59,6 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
         return
       }
 
-      // Clean up previous map instance
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null
@@ -67,10 +68,13 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
 
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: coords,
-        zoom: 15,
-        attributionControl: true
+        style: 'mapbox://styles/mapbox/standard',
+        center: [0, 20],
+        zoom: 1.5,
+        pitch: 0,
+        bearing: 0,
+        antialias: true,
+        attributionControl: true,
       })
 
       map.addControl(new mapboxgl.NavigationControl(), 'top-right')
@@ -89,13 +93,82 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
         </div>
       `)
 
-      new mapboxgl.Marker({ color: '#6366F1' })
+      // Wrapper: Mapbox applies translate() here for positioning
+      const markerEl = document.createElement('div')
+      markerEl.style.cssText = 'width:22px;height:22px;'
+
+      // Inner dot: animated independently to avoid conflicting with Mapbox's transform
+      const dotEl = document.createElement('div')
+      dotEl.style.cssText = [
+        'width:22px', 'height:22px',
+        'background:#6366F1',
+        'border:3px solid #fff',
+        'border-radius:50%',
+        'box-shadow:0 2px 14px rgba(99,102,241,0.55)',
+        'cursor:pointer',
+        'opacity:0',
+        'transform:scale(0)',
+      ].join(';')
+      markerEl.appendChild(dotEl)
+
+      const marker = new mapboxgl.Marker({ element: markerEl, anchor: 'center' })
         .setLngLat(coords)
         .setPopup(popup)
-        .addTo(map)
 
       map.on('load', () => {
-        if (!cancelled) setIsLoaded(true)
+        if (cancelled) return
+
+        // Dusk light preset — Standard style renders 3D buildings natively
+        map.setConfigProperty('basemap', 'lightPreset', 'dusk')
+
+        setIsLoaded(true)
+        marker.addTo(map)
+
+        // Fly from world view to business location in 3D
+        map.flyTo({
+          center: coords,
+          zoom: 20,
+          pitch: 70,
+          bearing: -20,
+          duration: 4000,
+          curve: 1.4,
+          easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
+        })
+
+        // After flyTo: bounce marker + start drone orbit
+        const onFlyEnd = () => {
+          if (cancelled) return
+          if (map.getZoom() < 10) {
+            map.once('moveend', onFlyEnd)
+            return
+          }
+
+          // Bounce marker
+          dotEl.animate(
+            [
+              { transform: 'scale(0) translateY(-14px)', opacity: 0 },
+              { transform: 'scale(1.45) translateY(0)',  opacity: 1, offset: 0.52 },
+              { transform: 'scale(0.80) translateY(0)',              offset: 0.70 },
+              { transform: 'scale(1.18) translateY(0)',              offset: 0.85 },
+              { transform: 'scale(0.95) translateY(0)',              offset: 0.93 },
+              { transform: 'scale(1)    translateY(0)',  opacity: 1 },
+            ],
+            { duration: 680, easing: 'ease-out', fill: 'forwards' }
+          )
+
+          // Drone orbit — rotates 15°/s (~24s full lap)
+          let lastTime: number | null = null
+          let bearing = map.getBearing()
+          const orbit = (time: number) => {
+            if (cancelled) return
+            if (lastTime !== null) bearing += (15 * (time - lastTime)) / 1000
+            lastTime = time
+            map.setBearing(bearing)
+            droneFrame = requestAnimationFrame(orbit)
+          }
+          droneFrame = requestAnimationFrame(orbit)
+        }
+        map.once('moveend', onFlyEnd)
       })
 
       mapRef.current = map
@@ -105,7 +178,9 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
 
     return () => {
       cancelled = true
+      if (droneFrame !== null) cancelAnimationFrame(droneFrame)
       if (mapRef.current) {
+        mapRef.current.stop()
         mapRef.current.remove()
         mapRef.current = null
       }

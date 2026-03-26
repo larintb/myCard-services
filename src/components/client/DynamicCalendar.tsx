@@ -188,7 +188,7 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected, serviceDuratio
       {selectedDate && (
         <div>
           <h4 className="text-sm font-semibold mb-3" style={{ color: '#1C1C1E' }}>
-            Horarios disponibles
+            Selecciona un horario
           </h4>
 
           {loadingSlots ? (
@@ -198,36 +198,22 @@ export function DynamicCalendar({ businessId, onTimeSlotSelected, serviceDuratio
               <span className="ml-2 text-sm" style={{ color: '#8E8E93' }}>Cargando...</span>
             </div>
           ) : availableSlots.length > 0 ? (
-            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#E5E5EA transparent' }}>
+            <div className="grid grid-cols-3 gap-2">
               {availableSlots.map(slot => (
                 <button
                   key={slot.time}
                   onClick={() => slot.available && selectTimeSlot(slot.time)}
                   disabled={!slot.available}
-                  className="flex items-center justify-between w-full px-4 py-3.5 rounded-2xl text-sm font-medium transition-all active:scale-[0.98] flex-shrink-0"
+                  className="flex items-center justify-center h-11 rounded-xl text-sm font-semibold transition-all active:scale-95"
                   style={{
                     backgroundColor: slot.available ? '#EEF2FF' : '#F2F2F7',
                     color: slot.available ? '#6366F1' : '#C7C7CC',
                     cursor: slot.available ? 'pointer' : 'default',
                     border: `1.5px solid ${slot.available ? '#C7D2FE' : 'transparent'}`,
+                    textDecoration: !slot.available ? 'line-through' : 'none',
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                      style={{ color: slot.available ? '#6366F1' : '#C7C7CC' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="font-semibold">{slot.time}</span>
-                  </div>
-                  {slot.available ? (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: '#C7D2FE', color: '#4338CA' }}>
-                      Disponible
-                    </span>
-                  ) : (
-                    <span className="text-xs" style={{ color: '#C7C7CC' }}>Ocupado</span>
-                  )}
+                  {slot.time}
                 </button>
               ))}
             </div>
