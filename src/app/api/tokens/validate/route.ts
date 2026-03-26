@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       success: boolean
       canRegister: boolean
       token: { id: string; type: string; status: string; expires_at: string | null }
-      business?: { id: string; business_name: string; owner_name: string; phone: string; address: string; business_image_url: string | null; theme_settings: object; slug: string }
+      business?: { id: string; business_name: string; owner_name: string; phone: string; address: string; address_latitude: number | null; address_longitude: number | null; business_image_url: string | null; theme_settings: object; slug: string }
       user?: { id: string; first_name?: string; last_name?: string; phone?: string; role?: string }
       isRegistered?: boolean
     } = {
@@ -90,6 +90,8 @@ export async function POST(request: Request) {
           owner_name: tokenWithBusiness.business.owner_name,
           phone: tokenWithBusiness.business.phone,
           address: tokenWithBusiness.business.address,
+          address_latitude: tokenWithBusiness.business.address_latitude ?? null,
+          address_longitude: tokenWithBusiness.business.address_longitude ?? null,
           business_image_url: tokenWithBusiness.business.business_image_url || null,
           theme_settings: tokenWithBusiness.business.theme_settings || {},
           slug: generateBusinessSlug(tokenWithBusiness.business.business_name)

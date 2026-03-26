@@ -750,6 +750,9 @@ export function ClientAppointmentInterface({
                 key={`${business.address}-${business.business_name}`}
                 address={business.address}
                 businessName={business.business_name}
+                coords={business.address_longitude && business.address_latitude
+                  ? [business.address_longitude, business.address_latitude]
+                  : undefined}
                 className="h-56 w-full"
               />
             </div>

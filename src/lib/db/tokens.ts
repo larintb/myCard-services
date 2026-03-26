@@ -127,6 +127,8 @@ export async function getTokenWithBusiness(token: string): Promise<{
       owner_name,
       phone,
       address,
+      address_latitude,
+      address_longitude,
       business_image_url,
       theme_settings
     `)

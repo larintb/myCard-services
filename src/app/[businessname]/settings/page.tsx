@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AddressAutocomplete, AddressDetails } from '@/components/ui/AddressAutocomplete'
 import { MapboxMap } from '@/components/ui/MapboxMap'
+import { MapboxMapEditor } from '@/components/ui/MapboxMapEditor'
 import { ImageUploader } from '@/components/ui/ImageUploader'
 import { BusinessAdminUser, requireBusinessAdminAuth, clearBusinessAdminSession } from '@/utils/auth'
 
@@ -32,6 +33,8 @@ export default function BusinessSettingsPage({ params }: PageProps) {
   })
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [addressDetails, setAddressDetails] = useState<AddressDetails | null>(null)
+  const [adjustedCoords, setAdjustedCoords] = useState<{ lng: number; lat: number } | null>(null)
+  const [storedCoords, setStoredCoords] = useState<{ lng: number; lat: number } | null>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -49,6 +52,9 @@ export default function BusinessSettingsPage({ params }: PageProps) {
           address: data.business.address,
           business_image_url: data.business.business_image_url || ''
         })
+        if (data.business.address_longitude && data.business.address_latitude) {
+          setStoredCoords({ lng: data.business.address_longitude, lat: data.business.address_latitude })
+        }
       }
     } catch (error) {
       console.error('Error loading business data:', error)
@@ -81,6 +87,7 @@ export default function BusinessSettingsPage({ params }: PageProps) {
 
   const handleAddressSelect = (address: AddressDetails) => {
     setAddressDetails(address)
+    setAdjustedCoords(null)
     setFormData(prev => ({ ...prev, address: address.fullAddress }))
     if (formErrors.address) setFormErrors(prev => ({ ...prev, address: '' }))
   }
@@ -146,8 +153,8 @@ export default function BusinessSettingsPage({ params }: PageProps) {
           ...(addressDetails && {
             address_details: {
               place_id: addressDetails.placeId,
-              latitude: addressDetails.latitude,
-              longitude: addressDetails.longitude,
+              latitude: adjustedCoords?.lat ?? addressDetails.latitude,
+              longitude: adjustedCoords?.lng ?? addressDetails.longitude,
               city: addressDetails.city,
               state: addressDetails.state,
               country: addressDetails.country,
@@ -161,6 +168,11 @@ export default function BusinessSettingsPage({ params }: PageProps) {
         alert('¡Configuraciones guardadas!')
         setSelectedImage(null)
         setImagePreviewUrl(null)
+        // Persist the effective coords so the map stays at the saved position
+        const savedLat = adjustedCoords?.lat ?? addressDetails?.latitude
+        const savedLng = adjustedCoords?.lng ?? addressDetails?.longitude
+        if (savedLng && savedLat) setStoredCoords({ lng: savedLng, lat: savedLat })
+        setAdjustedCoords(null)
         await loadBusinessData(user.businessId)
       } else {
         alert('Error: ' + data.error)
@@ -298,17 +310,46 @@ export default function BusinessSettingsPage({ params }: PageProps) {
                 </div>
               )}
 
-              {/* Map preview */}
-              {formData.address && (
-                <div className="mt-4 rounded-2xl overflow-hidden" style={{ height: 180 }}>
-                  <MapboxMap
-                    key={`${formData.address}-${formData.business_name}`}
-                    address={formData.address}
-                    businessName={formData.business_name || 'Tu Negocio'}
-                    className="h-full w-full"
-                  />
-                </div>
-              )}
+              {/* Map preview / editor */}
+              {(() => {
+                const effectiveCoords: [number, number] | null =
+                  adjustedCoords ? [adjustedCoords.lng, adjustedCoords.lat] :
+                  (addressDetails?.longitude && addressDetails?.latitude) ? [addressDetails.longitude, addressDetails.latitude] :
+                  (storedCoords?.lng && storedCoords?.lat) ? [storedCoords.lng, storedCoords.lat] :
+                  null
+
+                if (effectiveCoords) {
+                  return (
+                    <div className="mt-4" style={{ height: 220 }}>
+                      <MapboxMapEditor
+                        coords={effectiveCoords}
+                        onCoordsChange={(lng, lat) => setAdjustedCoords({ lng, lat })}
+                        className="h-full w-full"
+                      />
+                      {adjustedCoords && (
+                        <p className="mt-2 text-xs" style={{ color: '#6366F1' }}>
+                          Posición ajustada manualmente
+                        </p>
+                      )}
+                    </div>
+                  )
+                }
+
+                if (formData.address) {
+                  return (
+                    <div className="mt-4 rounded-2xl overflow-hidden" style={{ height: 180 }}>
+                      <MapboxMap
+                        key={formData.address}
+                        address={formData.address}
+                        businessName={formData.business_name || 'Tu Negocio'}
+                        className="h-full w-full"
+                      />
+                    </div>
+                  )
+                }
+
+                return null
+              })()}
             </div>
 
             {/* Secondary links */}

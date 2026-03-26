@@ -7,6 +7,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 interface MapboxMapProps {
   address: string
   businessName: string
+  coords?: [number, number] // [lng, lat] — if provided, skips geocoding
   className?: string
 }
 
@@ -28,11 +29,15 @@ async function geocodeAddress(address: string): Promise<[number, number] | null>
 }
 
 
-export function MapboxMap({ address, businessName, className = '' }: MapboxMapProps) {
+export function MapboxMap({ address, businessName, coords: coordsProp, className = '' }: MapboxMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Extract primitive values so the effect dep array uses stable scalars, not array references
+  const coordsLng = coordsProp?.[0]
+  const coordsLat = coordsProp?.[1]
 
   useEffect(() => {
     if (!address?.trim()) {
@@ -50,7 +55,10 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
     let droneFrame: number | null = null
 
     const initMap = async () => {
-      const coords = await geocodeAddress(address)
+      const coords: [number, number] | null =
+        coordsLng !== undefined && coordsLat !== undefined
+          ? [coordsLng, coordsLat]
+          : await geocodeAddress(address)
 
       if (cancelled) return
 
@@ -201,7 +209,7 @@ export function MapboxMap({ address, businessName, className = '' }: MapboxMapPr
         mapRef.current = null
       }
     }
-  }, [address, businessName])
+  }, [address, businessName, coordsLng, coordsLat])
 
   if (!address?.trim()) {
     return (

@@ -43,6 +43,8 @@ export interface Business {
   owner_name: string
   phone: string
   address: string
+  address_latitude?: number
+  address_longitude?: number
   business_image_url?: string
   theme_settings?: BusinessTheme
   created_at: string
