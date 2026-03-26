@@ -24,7 +24,7 @@ const FadeUp = ({
   <motion.div
     initial={{ opacity: 0, y: 32 }}
     whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true, margin: '-60px' }}
+    viewport={{ once: true, amount: 0.15 }}
     transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay }}
     className={className}
   >
@@ -465,31 +465,36 @@ export default function Home() {
 
           <div className="flex flex-col gap-24">
             {features.map((f, i) => (
-              <FadeUp key={i} delay={0.05}>
-                <div className={`flex flex-col ${i % 2 === 0 ? 'md:flex-row' : 'md:flex-row-reverse'} items-center gap-12 md:gap-16`}>
-                  {/* Image */}
-                  <div className="w-full md:w-3/5 rounded-2xl overflow-hidden flex-shrink-0"
-                    style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-                    <Image
-                      src={f.image}
-                      alt={f.title}
-                      width={0}
-                      height={0}
-                      sizes="(max-width: 768px) 100vw, 60vw"
-                      className="w-full h-auto block"
-                    />
+              <div key={i} className={`flex flex-col ${i % 2 === 0 ? 'md:flex-row' : 'md:flex-row-reverse'} items-center gap-12 md:gap-16`}>
+                {/* Image — fade in + subtle scale */}
+                <motion.div
+                  className="w-full md:w-3/5 rounded-2xl overflow-hidden flex-shrink-0"
+                  style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true, amount: 0.2 }}
+                  transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <Image
+                    src={f.image}
+                    alt={f.title}
+                    width={0}
+                    height={0}
+                    sizes="(max-width: 768px) 100vw, 60vw"
+                    className="w-full h-auto block"
+                    loading="eager"
+                  />
+                </motion.div>
+                {/* Text */}
+                <FadeUp delay={0.12} className="w-full md:w-2/5 flex flex-col">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-6"
+                    style={{ backgroundColor: 'rgba(99,102,241,0.2)', color: '#818CF8' }}>
+                    {f.icon}
                   </div>
-                  {/* Text */}
-                  <div className="w-full md:w-2/5 flex flex-col">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-6"
-                      style={{ backgroundColor: 'rgba(99,102,241,0.2)', color: '#818CF8' }}>
-                      {f.icon}
-                    </div>
-                    <h3 className="text-2xl md:text-3xl font-bold mb-4 text-white">{f.title}</h3>
-                    <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>{f.desc}</p>
-                  </div>
-                </div>
-              </FadeUp>
+                  <h3 className="text-2xl md:text-3xl font-bold mb-4 text-white">{f.title}</h3>
+                  <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>{f.desc}</p>
+                </FadeUp>
+              </div>
             ))}
           </div>
         </div>
